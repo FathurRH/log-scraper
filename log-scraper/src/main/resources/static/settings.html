@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pengaturan server · Log Scraper</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #e3e6ea;
+    --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --ok-bg: #e6f4ea; --bad: #c62828; --bad-bg: #fdecea;
+    --warn: #9a6700; --warn-bg: #fff4d6; --code: #f2f4f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --panel: #171b21; --ink: #e6e9ed; --muted: #9aa4b1; --line: #2a3038;
+      --accent: #4c8dff; --accent-ink: #0b0d10; --ok: #4ac26b; --ok-bg: #12261a; --bad: #ff6b6b; --bad-bg: #2d1416;
+      --warn: #e3b341; --warn-bg: #2b2210; --code: #1d232b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: -0.3px; }
+  header p { margin: 4px 0 20px; color: var(--muted); flex-basis: 100%; }
+  a { color: var(--accent); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .panel h2 { margin: 0 0 8px; font-size: 18px; }
+  .panel h3 { margin: 14px 0 6px; font-size: 15px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row.between { justify-content: space-between; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+  input, select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); width: 100%; min-width: 0; }
+  input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.danger { color: var(--bad); }
+  button.small { padding: 4px 8px; font-size: 13px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .nav { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .nav a { padding: 8px 14px; text-decoration: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .server:target { outline: 2px solid var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  .note { color: var(--muted); font-size: 13px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--code); }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); } .tag.bad { background: var(--bad-bg); color: var(--bad); } .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .server { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .server .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .server .name { font-weight: 700; font-size: 16px; }
+  .paths { list-style: none; padding: 0; margin: 6px 0; }
+  .paths li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .paths code { flex: 1 1 260px; word-break: break-all; }
+  code, pre { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; margin: 6px 0; white-space: pre-wrap; word-break: break-all; }
+  .steps { list-style: none; padding: 0; margin: 8px 0; }
+  .steps li { padding: 4px 0; }
+  .result { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--code); }
+  .result.bad { background: var(--bad-bg); } .result.ok { background: var(--ok-bg); }
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); max-width: 92vw; padding: 10px 14px; border-radius: 8px; background: var(--ink); color: var(--bg); z-index: 5; }
+  .toast.bad { background: var(--bad); color: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); padding: 4px 6px; }
+  td { border-bottom: 1px solid var(--line); padding: 4px 6px; vertical-align: top; }
+  .hide { display: none !important; }
+  .masked { background: #f1ebfb; color: #6f42c1; border-radius: 3px; padding: 0 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav" aria-label="Menu utama"><a href="./">Pencarian</a><a href="settings.html" class="on" aria-current="page">Pengaturan server</a></nav>
+  <header>
+    <h1>Pengaturan server</h1>
+    <p>Hubungkan server, tentukan folder lognya, dan cek formatnya. Password hanya bisa ditulis, tidak pernah ditampilkan lagi.</p>
+  </header>
+
+  <div class="panel hide" id="tokenPanel">
+    <h2>Token admin</h2>
+    <p class="note">Pengaturan ini dilindungi token (SETUP_TOKEN). Token hanya disimpan di tab ini sampai ditutup.</p>
+    <form id="tokenForm" class="row">
+      <input id="token" type="password" placeholder="Token admin" autocomplete="off" style="max-width:320px">
+      <button class="primary" type="submit">Masuk</button>
+    </form>
+  </div>
+
+  <div id="main" class="hide">
+    <div class="panel">
+      <div class="row between">
+        <h2 id="listTitle">Server</h2>
+        <button class="primary" id="addBtn" type="button">+ Tambah server</button>
+      </div>
+      <div id="servers"></div>
+      <p class="note" id="empty">Belum ada server. Tambahkan yang pertama.</p>
+    </div>
+
+    <div class="panel hide" id="formPanel">
+      <h2 id="formTitle">Tambah server</h2>
+      <form id="form" autocomplete="off">
+        <div class="grid">
+          <div><label for="fName">Nama</label><input id="fName" required maxlength="40" placeholder="app-02" pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></div>
+          <div><label for="fRole">Peran</label><input id="fRole" maxlength="60" placeholder="payment-service"></div>
+          <div><label for="fHost">Host</label><input id="fHost" required placeholder="10.1.2.3"></div>
+          <div><label for="fPort">Port</label><input id="fPort" type="number" min="1" max="65535" value="22"></div>
+          <div><label for="fUser">Username (akun read-only)</label><input id="fUser" required placeholder="logreader"></div>
+          <div><label for="fPass">Password</label><input id="fPass" type="password" autocomplete="new-password" placeholder="kosongkan jika pakai kunci SSH"></div>
+        </div>
+        <p class="note" id="passNote"></p>
+        <div class="row" style="margin-top:10px">
+          <button class="primary" type="submit">Simpan</button>
+          <button type="button" id="cancel">Batal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast hide" role="status"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const markMasked = s => esc(s).replace(/[^\s"=:,]*\*{3,}[^\s"=:,]*/g, m => `<span class="masked">${m}</span>`);
+const STATUS = { OK: 'ok', KOSONG: 'warn', TIDAK_TERJANGKAU: 'bad', LOGIN_GAGAL: 'bad', TIMEOUT: 'bad', DITOLAK: 'bad', KUNCI_BERUBAH: 'bad', ERROR: 'bad' };
+let servers = [], editing = null, busy = new Set();
+const view = {};   // per server: what the last test, discovery, check or preview showed
+
+function toast(msg, bad) {
+  const t = $('toast'); t.textContent = msg; t.className = 'toast' + (bad ? ' bad' : '');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hide'), bad ? 6000 : 2500);
+}
+
+async function api(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const tok = sessionStorage.getItem('setupToken');
+  if (tok) headers['X-Setup-Token'] = tok;
+  const res = await fetch('api/setup' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { showToken(); throw new Error(data.error || 'Token admin diperlukan'); }
+  if (!res.ok) throw new Error(data.error || `Gagal (HTTP ${res.status})`);
+  return data;
+}
+
+function showToken() { $('tokenPanel').classList.remove('hide'); $('main').classList.add('hide'); $('token').focus(); }
+$('tokenForm').onsubmit = e => { e.preventDefault(); sessionStorage.setItem('setupToken', $('token').value); load(); };
+
+async function load() {
+  try {
+    servers = await api('GET', '/servers');
+    $('tokenPanel').classList.add('hide'); $('main').classList.remove('hide');
+    render();
+  } catch (e) { if (!$('tokenPanel').classList.contains('hide')) return; toast(e.message, true); }
+}
+
+function login(s) {
+  const parts = [];
+  if (s.hasPassword) parts.push('password tersimpan');
+  if (s.keyFile) parts.push('kunci SSH');
+  return parts.join(' + ') || 'belum ada password atau kunci';
+}
+
+function render() {
+  $('listTitle').textContent = `Server (${servers.length})`;
+  $('empty').classList.toggle('hide', servers.length > 0);
+  $('servers').innerHTML = servers.map(card).join('');
+  if (!render.jumped && location.hash.startsWith('#srv-')) {   // arriving from a problem on the search page
+    render.jumped = true;
+    const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (el) { el.scrollIntoView({ block: 'start' }); el.style.outline = '2px solid var(--accent)'; }
+  }
+}
+
+function card(s) {
+  const v = view[s.name] || {};
+  const n = esc(s.name), isBusy = busy.has(s.name);
+  const paths = s.logPaths.length
+    ? `<ul class="paths">${s.logPaths.map((p, i) => `<li><code>${esc(p)}</code>
+        <button class="small" data-act="check" data-name="${n}" data-i="${i}">Cek</button>
+        <button class="small" data-act="preview" data-name="${n}" data-i="${i}">Lihat format</button>
+        <button class="small danger" data-act="rmpath" data-name="${n}" data-i="${i}">Hapus</button></li>`).join('')}</ul>`
+    : `<p class="note">Folder log belum diatur. Cari dari sebuah ID di bawah, atau tambahkan sendiri.</p>`;
+  return `<div class="server" id="srv-${n}">
+    <div class="head">
+      <div><span class="name">${n}</span> <span class="note">${esc(s.role || '')}</span><br>
+        <span class="note">${esc(s.username)}@${esc(s.host)}:${s.port} · ${esc(login(s))} ·
+        ${s.hostKeyFingerprint ? '<span class="tag ok">identitas server dikunci</span>' : '<span class="tag warn">identitas server belum dikunci</span>'}</span></div>
+      <div class="row">
+        <button class="primary small" data-act="test" data-name="${n}" ${isBusy ? 'disabled' : ''}>Tes koneksi</button>
+        <button class="small" data-act="key" data-name="${n}">Buat kunci SSH</button>
+        <button class="small" data-act="edit" data-name="${n}">Ubah</button>
+        <button class="small danger" data-act="delete" data-name="${n}">Hapus</button>
+      </div>
+    </div>
+    ${v.test ? testHtml(s, v.test) : ''}
+    ${v.key ? keyHtml(v.key) : ''}
+    <h3>Folder log</h3>
+    ${paths}
+    <div class="row">
+      <input data-newpath="${n}" placeholder="/opt/payment/logs/payment*.log" style="flex:1 1 280px;width:auto">
+      <button class="small" data-act="addpath" data-name="${n}">Tambah</button>
+    </div>
+    ${v.check ? checkHtml(v.check) : ''}
+    ${v.preview ? previewHtml(v.preview) : ''}
+    <h3>Cari folder log dari sebuah ID</h3>
+    <div class="row">
+      <input data-id="${n}" placeholder="ID transaksi yang terjadi hari ini, contoh TRX-88231" style="flex:1 1 280px;width:auto" maxlength="80">
+      <button class="small" data-act="discover" data-name="${n}" ${isBusy ? 'disabled' : ''}>Cari folder</button>
+    </div>
+    ${v.discover ? discoverHtml(s, v.discover) : '<p class="note">Log Scraper mencari ID itu di folder umum dan menunjukkan file mana yang memuatnya.</p>'}
+  </div>`;
+}
+
+function testHtml(s, r) {
+  const steps = r.steps.map(x => `<li>${x.ok ? '✓' : '✗'} <b>${esc(x.step)}</b>: ${esc(x.detail)}</li>`).join('');
+  const pin = r.fingerprint && !s.hostKeyFingerprint
+    ? `<div class="row"><button class="small" data-act="pin" data-name="${esc(s.name)}" data-fp="${esc(r.fingerprint)}">Kunci identitas server ini</button>
+       <span class="note">Cocokkan dulu ${esc(r.fingerprint)} dengan yang diberikan tim server. Setelah dikunci, server dengan kunci lain ditolak.</span></div>` : '';
+  return `<div class="result ${r.ok ? 'ok' : 'bad'}"><b>${r.ok ? 'Koneksi berhasil' : 'Koneksi belum berhasil'}</b>
+    <ul class="steps">${steps}</ul>${r.hint ? `<div class="note">${esc(r.hint)}</div>` : ''}${pin}</div>`;
+}
+
+function keyHtml(k) {
+  return `<div class="result"><b>Kunci SSH dibuat.</b> Kunci pribadi tetap di Log Scraper. Minta tim server menjalankan ini sebagai akun read-only:
+    <pre>${esc(k.installCommand)}</pre>
+    <button class="small" data-act="copy" data-text="${esc(k.installCommand)}">Salin perintah</button></div>`;
+}
+
+function checkHtml(r) {
+  return `<div class="result ${r.count ? 'ok' : 'bad'}">${r.count ? `Cocok dengan ${r.count} file` : 'Tidak ada file yang cocok'}${r.note ? ' · ' + esc(r.note) : ''}
+    ${r.files.length ? '<pre>' + r.files.map(esc).join('\n') + '</pre>' : ''}</div>`;
+}
+
+function previewHtml(r) {
+  if (r.status !== 'OK') return `<div class="result bad">${esc(r.note || r.status)}</div>`;
+  const rows = r.rows.slice(0, 8).map(x => `<tr><td>${esc(x.time.slice(11))}</td><td>${esc(x.level)}</td><td>${markMasked(x.message)}</td></tr>`).join('');
+  const masked = Object.entries(r.masked || {}).map(([k, v]) => `${v} ${esc(k)}`).join(', ');
+  return `<div class="result ${r.ok ? 'ok' : 'bad'}"><b>${r.recognized} dari ${r.lines} baris terbaca (${r.percent}%)</b>${r.format ? ' · format: ' + esc(r.format) : ''}
+    ${r.advice ? `<div class="note">${esc(r.advice)}</div>` : ''}
+    ${rows ? `<table><thead><tr><th>Waktu</th><th>Level</th><th>Pesan</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+    ${r.unrecognizedSamples.length ? `<div class="note">Contoh baris yang tidak dikenali:</div><pre>${r.unrecognizedSamples.map(markMasked).join('\n')}</pre>` : ''}
+    ${masked ? `<div class="note">Disamarkan di pratinjau: ${masked}</div>` : ''}</div>`;
+}
+
+function discoverHtml(s, r) {
+  if (r.status !== 'OK' && r.status !== 'KOSONG') return `<div class="result bad">${esc(r.status)}: ${esc(r.note || '')}</div>`;
+  if (!r.patterns.length) return `<div class="result bad">${esc(r.note || 'Tidak ada hasil.')}</div>`;
+  const rows = r.patterns.map((p, i) => `<li><code>${esc(p.pattern)}</code>
+      <span class="note">${p.files} file${p.compressedRotated ? ', ' + p.compressedRotated + ' file .gz (belum dicari)' : ''}</span>
+      ${s.logPaths.includes(p.pattern) ? '<span class="tag ok">sudah dipakai</span>' : `<button class="small primary" data-act="usepattern" data-name="${esc(s.name)}" data-i="${i}">Pakai</button>`}</li>`).join('');
+  return `<div class="result ok"><b>Ditemukan ${r.patterns.length} lokasi log</b>
+    <ul class="paths">${rows}</ul>
+    <div class="note">${r.hiddenSystemLogs ? r.hiddenSystemLogs + ' log sistem disembunyikan. ' : ''}${r.unreadableFolders ? r.unreadableFolders + ' folder tidak boleh dibaca akun ini. ' : ''}</div></div>`;
+}
+
+async function run(name, fn) {
+  busy.add(name); render();
+  try { await fn(); } catch (e) { toast(e.message, true); } finally { busy.delete(name); render(); }
+}
+
+async function saveServer(name, body) {
+  const s = await api('PUT', '/servers/' + encodeURIComponent(name), body);
+  servers = servers.some(x => x.name === name) ? servers.map(x => x.name === name ? s : x) : [...servers, s];
+  return s;
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const name = b.dataset.name, act = b.dataset.act, s = servers.find(x => x.name === name);
+  const enc = encodeURIComponent(name);
+  view[name] = view[name] || {};
+  if (act === 'copy') { try { await navigator.clipboard.writeText(b.dataset.text); toast('Tersalin'); } catch { toast('Clipboard diblokir browser. Salin manual.', true); } return; }
+  if (act === 'edit') return openForm(s);
+  if (act === 'delete') {
+    if (!confirm(`Hapus server ${name} dari Log Scraper? Server itu sendiri tidak diubah.`)) return;
+    return run(name, async () => { await api('DELETE', '/servers/' + enc); servers = servers.filter(x => x.name !== name); delete view[name]; toast('Server dihapus'); });
+  }
+  if (act === 'test') return run(name, async () => { view[name].test = await api('POST', `/servers/${enc}/test`); });
+  if (act === 'key') return run(name, async () => {
+    let force = false;
+    if (s.keyFile && !confirm('Server ini sudah punya kunci. Buat yang baru? Kunci lama tidak berlaku lagi.')) return;
+    force = !!s.keyFile;
+    view[name].key = await api('POST', `/servers/${enc}/key?force=${force}`);
+    servers = await api('GET', '/servers');
+  });
+  if (act === 'pin') return run(name, async () => { await saveServer(name, { hostKeyFingerprint: b.dataset.fp }); toast('Identitas server dikunci'); });
+  if (act === 'addpath') {
+    const input = document.querySelector(`input[data-newpath="${CSS.escape(name)}"]`), p = input.value.trim();
+    if (!p) return;
+    return run(name, async () => { await saveServer(name, { logPaths: [...s.logPaths, p] }); toast('Folder log disimpan'); });
+  }
+  if (act === 'rmpath') return run(name, async () => { await saveServer(name, { logPaths: s.logPaths.filter((_, i) => i !== +b.dataset.i) }); delete view[name].check; delete view[name].preview; });
+  if (act === 'check') return run(name, async () => { delete view[name].preview; view[name].check = await api('POST', `/servers/${enc}/check`, { path: s.logPaths[+b.dataset.i] }); });
+  if (act === 'preview') return run(name, async () => {
+    delete view[name].check;
+    const c = await api('POST', `/servers/${enc}/check`, { path: s.logPaths[+b.dataset.i] });
+    if (!c.count) { view[name].check = c; return; }
+    view[name].preview = await api('POST', `/servers/${enc}/preview`, { path: c.files[0], lines: 20 });
+  });
+  if (act === 'discover') {
+    const id = document.querySelector(`input[data-id="${CSS.escape(name)}"]`).value.trim();
+    if (!id) { toast('Isi ID transaksi dulu', true); return; }
+    return run(name, async () => { view[name].discover = await api('POST', `/servers/${enc}/discover`, { id }); });
+  }
+  if (act === 'usepattern') return run(name, async () => {
+    const p = view[name].discover.patterns[+b.dataset.i].pattern;
+    await saveServer(name, { logPaths: [...s.logPaths, p] }); toast('Folder log disimpan');
+  });
+});
+
+function openForm(s) {
+  editing = s ? s.name : null;
+  $('formPanel').classList.remove('hide');
+  $('formTitle').textContent = s ? `Ubah ${s.name}` : 'Tambah server';
+  $('fName').value = s ? s.name : ''; $('fName').disabled = !!s;
+  $('fRole').value = s?.role || ''; $('fHost').value = s?.host || ''; $('fPort').value = s?.port || 22;
+  $('fUser').value = s?.username || ''; $('fPass').value = '';
+  $('passNote').textContent = s && s.hasPassword ? 'Password sudah tersimpan dan tidak bisa dilihat. Kosongkan kolom ini jika tidak ingin menggantinya.' : '';
+  $('formPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  (s ? $('fHost') : $('fName')).focus();
+}
+$('addBtn').onclick = () => openForm(null);
+$('cancel').onclick = () => $('formPanel').classList.add('hide');
+$('form').onsubmit = async e => {
+  e.preventDefault();
+  const name = editing || $('fName').value.trim();
+  const body = { role: $('fRole').value.trim(), host: $('fHost').value.trim(), port: +$('fPort').value || 22, username: $('fUser').value.trim() };
+  if ($('fPass').value) body.password = $('fPass').value;     // left empty on purpose = keep the saved password
+  try {
+    await saveServer(name, body);
+    $('fPass').value = ''; $('formPanel').classList.add('hide'); render();
+    toast(editing ? 'Perubahan disimpan' : 'Server disimpan. Lanjut: Tes koneksi.');
+  } catch (err) { toast(err.message, true); }
+};
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+server:
+  port: 8090
+spring:
+  application:
+    name: log-scraper
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+scraper:
+  timeout-seconds: 5
+  max-results: 500
+  context-lines: 40
+  manual-minutes-per-server: 3
+  audit-file: ${AUDIT_FILE:audit.log}
+  servers-file: ${SERVERS_FILE:servers.json}
+  key-dir: ${KEY_DIR:keys}
+  setup-token: ${SETUP_TOKEN:}
+  # Masking is set here, never from the browser, so nobody can switch it off while looking at a ticket.
+  masking:
+    # Built-in filters to turn OFF (names: NIK KARTU TELEPON RAHASIA EMAIL NPWP REKENING NAMA ALAMAT TGL_LAHIR KARTU_CVV IP KUSTOM)
+    disabled: []
+    # Extra field names to mask, wherever they appear as field=value or field="value" in your logs
+    fields: []
+    # Extra regex rules, e.g. a policy number. keep-head / keep-tail = characters left readable.
+    custom: []
+    #  - { name: nomor-polis, regex: "POL-\\d{8}", keep-head: 4, keep-tail: 2 }
+  servers:
+    - name: app-01
+      role: api-gateway
+      host: "${APP01_HOST:localhost}"
+      port: "${APP01_PORT:2201}"
+      username: logreader
+      password: "${SSH_PASSWORD:bacasaja}"
+      log-paths: ["/var/log/app/*.log"]
+    - name: app-02
+      role: payment-service
+      host: "${APP02_HOST:localhost}"
+      port: "${APP02_PORT:2202}"
+      username: logreader
+      password: "${SSH_PASSWORD:bacasaja}"
+      log-paths: ["/var/log/app/*.log"]
+    - name: app-03
+      role: core-banking-adapter
+      host: "${APP03_HOST:localhost}"
+      port: "${APP03_PORT:2203}"
+      username: logreader
+      password: "${SSH_PASSWORD:bacasaja}"
+      log-paths: ["/var/log/app/*.log"]
+    - name: app-04
+      role: notification-service
+      host: "${APP04_HOST:localhost}"
+      port: "${APP04_PORT:2204}"
+      username: logreader
+      password: "${SSH_PASSWORD:bacasaja}"
+      log-paths: ["/var/log/app/*.log"]

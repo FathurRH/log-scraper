@@ -1,0 +1,60 @@
+# A fake bank on four "servers" plus Log Scraper.
+#   docker compose up -d --build      then open http://localhost:8090
+#   docker compose stop app-04         to see how Log Scraper reports a server that is down
+x-bank: &bank
+  build: ./sample-bank
+  image: log-scraper/sample-bank:1.0
+  environment: &bankenv
+    SSH_USER: logreader
+    SSH_PASSWORD: ${SSH_PASSWORD:-bacasaja}
+    PAYMENT_URL: http://app-02:8080
+    CORE_URL: http://app-03:8080
+    NOTIF_URL: http://app-04:8080
+  restart: unless-stopped
+
+services:
+  app-01:
+    <<: *bank
+    hostname: app-01
+    environment: { <<: *bankenv, ROLE: gateway }
+    ports: ["2201:2222"]
+  app-02:
+    <<: *bank
+    hostname: app-02
+    environment: { <<: *bankenv, ROLE: payment }
+    ports: ["2202:2222"]
+  app-03:
+    <<: *bank
+    hostname: app-03
+    environment: { <<: *bankenv, ROLE: core }
+    ports: ["2203:2222"]
+  app-04:
+    <<: *bank
+    hostname: app-04
+    environment: { <<: *bankenv, ROLE: notif }
+    ports: ["2204:2222"]
+
+  log-scraper:
+    build: ./log-scraper
+    image: log-scraper/log-scraper:1.0
+    ports: ["8090:8090"]
+    environment:
+      APP01_HOST: app-01
+      APP01_PORT: 2222
+      APP02_HOST: app-02
+      APP02_PORT: 2222
+      APP03_HOST: app-03
+      APP03_PORT: 2222
+      APP04_HOST: app-04
+      APP04_PORT: 2222
+      SSH_PASSWORD: ${SSH_PASSWORD:-bacasaja}
+      AUDIT_FILE: /data/audit.log
+      SERVERS_FILE: /data/servers.json
+      KEY_DIR: /data/keys
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+    volumes: ["log-scraper-data:/data"]
+    depends_on: [app-01, app-02, app-03, app-04]
+    restart: unless-stopped
+
+volumes:
+  log-scraper-data:
