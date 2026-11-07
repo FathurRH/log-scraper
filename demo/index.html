@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log Scraper</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #e3e6ea;
+    --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --ok-bg: #e6f4ea; --bad: #c62828; --bad-bg: #fdecea;
+    --warn: #9a6700; --warn-bg: #fff4d6; --mask: #6f42c1; --mask-bg: #f1ebfb; --code: #f2f4f7;
+    --s1: #1f6feb; --s2: #8250df; --s3: #bf3989; --s4: #0e8a7e; --s5: #b35900; --s6: #57606a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --panel: #171b21; --ink: #e6e9ed; --muted: #9aa4b1; --line: #2a3038;
+      --accent: #4c8dff; --accent-ink: #0b0d10; --ok: #4ac26b; --ok-bg: #12261a; --bad: #ff6b6b; --bad-bg: #2d1416;
+      --warn: #e3b341; --warn-bg: #2b2210; --mask: #b392f0; --mask-bg: #231a35; --code: #1d232b;
+      --s1: #4c8dff; --s2: #a371f7; --s3: #f778ba; --s4: #3fb9a8; --s5: #f0883e; --s6: #8b949e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: -0.3px; }
+  header p { margin: 4px 0 20px; color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=search] { flex: 1 1 260px; min-width: 0; font: inherit; font-size: 17px; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--bg); color: var(--ink); }
+  input[type=search]:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  select { font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; min-width: 92px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  .chip { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 10px; border-radius: 999px; }
+  .error { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
+  .servers { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+  .srv { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+  .srv b { display: block; } .srv small { color: var(--muted); display: block; }
+  .srv.ok { border-color: var(--ok); } .srv.down { border-color: var(--bad); background: var(--bad-bg); }
+  .srv .st { font-size: 13px; margin-top: 4px; }
+  .verdict { border-left: 6px solid var(--muted); }
+  .verdict.GAGAL { border-left-color: var(--bad); } .verdict.BERHASIL { border-left-color: var(--ok); }
+  .verdict .tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .5px; padding: 2px 8px; border-radius: 4px; background: var(--code); }
+  .verdict.GAGAL .tag { background: var(--bad-bg); color: var(--bad); } .verdict.BERHASIL .tag { background: var(--ok-bg); color: var(--ok); }
+  .verdict h2 { margin: 8px 0 6px; font-size: 20px; line-height: 1.35; }
+  .verdict ul { margin: 0; padding-left: 18px; color: var(--muted); }
+  .alert { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+  .nav { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .nav a { padding: 8px 14px; text-decoration: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .alert.calm { background: var(--code); color: var(--ink); font-weight: 500; }
+  .alert .stag { margin-left: 2px; }
+  .srvlist { margin: 6px 0 0; padding-left: 18px; font-weight: 500; } .srvlist li { margin: 2px 0; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 6px 12px; font-size: 13px; }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .srvblock { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .srvblock:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  .srvhead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .srvblock pre { margin: 6px 0 0; padding: 8px; background: var(--code); border-radius: 6px; overflow-x: auto; font-size: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .stat .big { font-size: 22px; font-weight: 700; } .stat .lbl { color: var(--muted); font-size: 13px; }
+  .lane { display: grid; grid-template-columns: 170px 1fr; align-items: center; gap: 10px; height: 34px; }
+  .lane .name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track { position: relative; height: 2px; background: var(--line); }
+  .dot { position: absolute; top: -6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; border: 2px solid var(--panel); cursor: pointer; }
+  .dot.WARN { background: var(--warn) !important; } .dot.ERROR { background: var(--bad) !important; width: 18px; height: 18px; top: -8px; margin-left: -9px; }
+  .axis { display: grid; grid-template-columns: 170px 1fr; gap: 10px; color: var(--muted); font-size: 12px; }
+  .axis div:last-child { display: flex; justify-content: space-between; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); padding: 6px; }
+  td { border-bottom: 1px solid var(--line); padding: 6px; vertical-align: top; }
+  td.msg { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-word; }
+  tr.ERROR td { background: var(--bad-bg); } tr.WARN td { background: var(--warn-bg); }
+  .stag { display: inline-block; font-weight: 600; font-size: 12px; padding: 1px 6px; border-radius: 4px; color: #fff; white-space: nowrap; }
+  .lvl { font-weight: 700; font-size: 11px; } .lvl.ERROR { color: var(--bad); } .lvl.WARN { color: var(--warn); } .lvl.DEBUG { color: var(--muted); }
+  .masked { background: var(--mask-bg); color: var(--mask); border-radius: 3px; padding: 0 2px; }
+  details pre { margin: 6px 0 0; padding: 8px; background: var(--code); border-radius: 6px; overflow-x: auto; font-size: 12px; }
+  .row { display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .row h3 { margin: 0; font-size: 16px; }
+  .note { color: var(--muted); font-size: 13px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  textarea { width: 100%; height: 220px; font: 12px ui-monospace, monospace; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .hide { display: none !important; }
+  .tablewrap { overflow-x: auto; }
+  @media (max-width: 640px) {
+    .lane, .axis { grid-template-columns: 90px 1fr; }
+    .hide-sm { display: none; }
+    .verdict h2 { font-size: 18px; }
+    thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    tr { border-bottom: 1px solid var(--line); padding: 6px 0; }
+    td { border: 0; padding: 2px 4px; }
+    td:not(.msg) { display: inline-block; width: auto; }
+  }
+  .demo-banner { background: #fff7d6; color: #5c4400; border-bottom: 1px solid #e8d48a; padding: 8px 16px; text-align: center; font-size: 14px; }
+  @media (prefers-color-scheme: dark) { .demo-banner { background: #3a3000; color: #ffe9a0; border-color: #6b5a10; } }
+  .demo-banner button { margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="demo-banner" id="demoBanner">Demo dengan data contoh: tidak ada server asli yang dihubungi. Coba ID <b>TRX-88231</b>, <b>TRX-88232</b> atau <b>TRX-88233</b>.</div>
+<div class="wrap">
+  <nav class="nav" aria-label="Menu utama"><a href="index.html" class="on" aria-current="page">Pencarian</a><a href="settings.html">Pengaturan server</a></nav>
+  <header>
+    <h1>Log Scraper</h1>
+    <p>Satu ID transaksi, semua server, satu timeline. Data nasabah disamarkan otomatis, tanpa instalasi apa pun di server.</p>
+  </header>
+
+  <div class="panel">
+    <form id="f" autocomplete="off">
+      <input id="q" type="search" placeholder="ID transaksi, contoh TRX-88231" aria-label="ID transaksi" maxlength="120">
+      <select id="hours" aria-label="Rentang waktu">
+        <option value="1">1 jam terakhir</option>
+        <option value="6">6 jam terakhir</option>
+        <option value="24" selected>24 jam terakhir</option>
+        <option value="168">7 hari terakhir</option>
+      </select>
+      <button class="primary" id="go" type="submit" disabled>Cari</button>
+      <button id="reset" type="button" class="hide">Bersihkan</button>
+    </form>
+    <div class="hint" id="hint">Tempel ID dari keluhan nasabah atau tiket. Spasi dan tanda baca di ujung dibersihkan otomatis.</div>
+    <div class="chips" id="samples"></div>
+  </div>
+
+  <div id="err" class="panel error hide" role="alert"></div>
+  <div id="loading" class="panel hide"></div>
+
+  <div id="out" class="hide">
+    <div class="servers" id="servers"></div>
+    <div style="height:14px"></div>
+    <div id="verdict" class="panel verdict"></div>
+    <div class="stats" id="stats"></div>
+    <div style="height:14px"></div>
+    <div class="panel" id="journeyPanel">
+      <div class="row"><h3>Perjalanan transaksi</h3><span class="note">Satu jalur per server. Merah = ERROR, kuning = WARN.</span></div>
+      <div id="journey"></div>
+    </div>
+    <div class="panel">
+      <div class="row">
+        <h3 id="tlTitle">Timeline</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <div class="seg" role="group" aria-label="Tampilan timeline">
+            <button type="button" id="viewServers" class="on">Per server</button>
+            <button type="button" id="viewMerged">Satu timeline</button>
+          </div>
+          <label class="note"><input type="checkbox" id="hideDebug"> Sembunyikan DEBUG</label>
+          <button id="copy" type="button">Salin untuk tiket</button>
+        </div>
+      </div>
+      <div id="notes" class="note"></div>
+      <div id="timeline"></div>
+      <div id="copyBox" class="hide" style="margin-top:10px">
+        <div class="note">Clipboard diblokir browser. Pilih semua teks di bawah lalu salin manual.</div>
+        <textarea id="copyText" readonly></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="demo-api.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const COLORS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
+const KIND = { NIK: 'NIK', KARTU: 'nomor kartu', TELEPON: 'nomor telepon', RAHASIA: 'rahasia (token, password, OTP)', EMAIL: 'email', NPWP: 'NPWP', REKENING: 'nomor rekening', NAMA: 'nama', ALAMAT: 'alamat', TGL_LAHIR: 'tanggal lahir', KARTU_CVV: 'CVV kartu', IP: 'alamat IP', KUSTOM: 'data kustom' };
+const STATUS = {
+  OK: ['✓', 'baris ditemukan'], KOSONG: ['–', 'tidak ada baris'], TIDAK_TERJANGKAU: ['✗', 'tidak terjangkau'],
+  LOGIN_GAGAL: ['✗', 'login gagal'], TIMEOUT: ['✗', 'timeout'], DITOLAK: ['✗', 'perintah ditolak'], ERROR: ['✗', 'error'],
+  KUNCI_BERUBAH: ['✗', 'kunci server berubah'], BELUM_DIATUR: ['!', 'folder log belum diatur'], FORMAT_TIDAK_DIKENALI: ['!', 'format log tidak dikenali']
+};
+let last = null, serverColor = {}, view = 'servers';
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const markMasked = s => esc(s).replace(/[^\s"=:,]*\*{3,}[^\s"=:,]*/g, m => `<span class="masked" title="disamarkan">${m}</span>`);
+const color = s => `var(${COLORS[(serverColor[s] ?? 0) % COLORS.length]})`;
+const toMs = t => new Date(t.replace(' ', 'T')).getTime();
+const fmtSec = ms => (ms / 1000).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function syncButtons() {
+  const v = $('q').value.trim();
+  $('go').disabled = v.length === 0;
+  $('reset').classList.toggle('hide', v.length === 0 && !last);
+}
+$('q').addEventListener('input', syncButtons);
+
+fetch('api/samples').then(r => r.ok ? r.json() : []).then(ids => {
+  if (!ids.length) return;
+  $('samples').innerHTML = '<span class="note">Coba:</span>' +
+    ids.map(id => `<button type="button" class="chip" data-id="${esc(id)}">${esc(id)}</button>`).join('');
+  $('samples').querySelectorAll('button').forEach(b => b.onclick = () => { $('q').value = b.dataset.id; search(); });
+}).catch(() => {});
+
+$('f').addEventListener('submit', e => { e.preventDefault(); search(); });
+$('reset').onclick = () => {
+  $('q').value = ''; last = null;
+  ['out', 'err', 'loading'].forEach(id => $(id).classList.add('hide'));
+  syncButtons(); $('q').focus();
+};
+$('hideDebug').onchange = () => last && renderRows(last);
+function setView(v) {
+  view = v;
+  $('viewServers').classList.toggle('on', v === 'servers');
+  $('viewMerged').classList.toggle('on', v === 'merged');
+  if (last) renderRows(last);
+}
+$('viewServers').onclick = () => setView('servers');
+$('viewMerged').onclick = () => setView('merged');
+
+async function search() {
+  const q = $('q').value;
+  if (!q.trim()) { showError('Masukkan ID transaksi atau kata yang dicari.'); return; }
+  $('err').classList.add('hide');
+  $('go').disabled = true; $('go').innerHTML = '<span class="spin"></span>';
+  $('loading').classList.remove('hide');
+  $('loading').innerHTML = '<span class="spin"></span> Menghubungi semua server lewat SSH read-only…';
+  try {
+    const res = await fetch(`api/search?q=${encodeURIComponent(q)}&hours=${$('hours').value}`);
+    const body = await res.json().catch(() => ({ error: 'Jawaban server tidak bisa dibaca.' }));
+    if (!res.ok) { showError(body.error || `Pencarian gagal (HTTP ${res.status}).`); return; }
+    last = body; $('q').value = body.query; render(body);
+  } catch (e) {
+    showError('Log Scraper tidak bisa dihubungi. Cek apakah aplikasinya masih jalan.');
+  } finally {
+    $('loading').classList.add('hide');
+    $('go').textContent = 'Cari'; syncButtons();
+  }
+}
+
+function showError(msg) {
+  $('err').textContent = msg; $('err').classList.remove('hide');
+  $('out').classList.add('hide'); $('loading').classList.add('hide');
+}
+
+function render(a) {
+  serverColor = {}; a.servers.forEach((s, i) => serverColor[s.server] = i);
+  $('out').classList.remove('hide');
+
+  $('servers').innerHTML = a.servers.map(s => {
+    const [icon, label] = STATUS[s.status] || ['?', s.status];
+    const down = !['OK', 'KOSONG'].includes(s.status);
+    return `<div class="srv ${s.status === 'OK' ? 'ok' : ''} ${down ? 'down' : ''}">
+      <b><span class="stag" style="background:${color(s.server)}">${esc(s.server)}</span> ${esc(s.role || '')}</b>
+      <div class="st">${icon} ${s.status === 'OK' ? s.hits + ' ' : ''}${label} · ${s.millis} ms</div>
+      ${s.note ? `<small>${esc(s.note)}</small>` : ''}
+      ${down ? `<small><a href="settings.html#srv-${encodeURIComponent(s.server)}">Atur server</a></small>` : ''}</div>`;
+  }).join('');
+
+  const d = a.diagnosis;
+  const down = a.servers.filter(s => !['OK', 'KOSONG'].includes(s.status));
+  const tagText = { GAGAL: 'TRANSAKSI GAGAL', BERHASIL: 'TRANSAKSI BERHASIL', TIDAK_JELAS: a.total ? 'HASIL PENCARIAN' : 'TIDAK DITEMUKAN' }[d.verdict];
+  let sugg = '';
+  if (a.total === 0) {
+    sugg = a.suggestions.length
+      ? `<div class="chips"><span class="note">Mungkin maksudnya:</span>${a.suggestions.map(s => `<button type="button" class="chip" data-id="${esc(s)}">${esc(s)}</button>`).join('')}</div>`
+      : `<p class="note">Coba perlebar rentang waktu, atau cek lagi ID-nya di tiket.</p>`;
+  }
+  $('verdict').className = `panel verdict ${d.verdict}`;
+  $('verdict').innerHTML = `<span class="tag">${tagText}</span>
+    <h2>${a.total === 0 ? `Tidak ada log untuk "${esc(a.query)}" di ${a.servers.length - down.length} server yang terjangkau.` : esc(d.headline)}</h2>
+    ${d.details.length && a.total ? `<ul>${d.details.map(x => `<li>${markMasked(x)}</li>`).join('')}</ul>` : ''}
+    ${d.alert ? `<div class="alert">⚠ ${esc(d.alert)}</div>` : ''}
+    ${serverNotice(a, down)}
+    ${sugg}`;
+  $('verdict').querySelectorAll('button[data-id]').forEach(b => b.onclick = () => { $('q').value = b.dataset.id; search(); });
+
+  const maskedTotal = Object.values(a.masked).reduce((x, y) => x + y, 0);
+  const maskedList = Object.entries(a.masked).map(([k, v]) => `${v} ${KIND[k] || k}`).join(' · ');
+  $('stats').innerHTML = `
+    <div class="stat"><div class="big">${fmtSec(a.millis)} detik</div><div class="lbl">Log Scraper, ${a.servers.length} server sekaligus.
+      Cara manual: ±${a.manualMinutes} menit (SSH dan grep satu per satu).</div></div>
+    <div class="stat"><div class="big">${a.total} baris</div><div class="lbl">digabung jadi satu timeline dari ${a.servers.filter(s => s.hits).length} server</div></div>
+    <div class="stat"><div class="big">${maskedTotal} data disamarkan</div><div class="lbl">${maskedTotal ? esc(maskedList) + '. Nomor referensi yang bukan NIK atau kartu tetap terbaca.' : 'Tidak ada data nasabah di hasil ini.'}</div></div>`;
+
+  const empty = a.total === 0;
+  $('stats').classList.toggle('hide', empty);
+  $('timeline').closest('.panel').classList.toggle('hide', empty);
+  renderJourney(a);
+  renderRows(a);
+  $('copyBox').classList.add('hide');
+}
+
+/** One notice that lists every server that was searched, and says for each server that has a problem what the problem is. */
+function serverNotice(a, down) {
+  if (!a.servers.length) return `<div class="alert">Belum ada server yang diatur, jadi tidak ada yang dicari. <a href="settings.html">Buka Pengaturan server</a> untuk menambahkan yang pertama.</div>`;
+  const tag = n => `<span class="stag" style="background:${color(n)}">${esc(n)}</span>`;
+  const line = s => {
+    const [icon, label] = STATUS[s.status] || ['?', s.status];
+    const bad = !['OK', 'KOSONG'].includes(s.status);
+    return `<li>${tag(s.server)} ${icon} ${s.status === 'OK' ? s.hits + ' baris' : esc(label)}${bad && s.note ? ': ' + esc(s.note) : ''}${bad ? ` <a href="settings.html#srv-${encodeURIComponent(s.server)}">Atur server</a>` : ''}</li>`;
+  };
+  const heading = down.length
+    ? `Hasil mungkin tidak lengkap: ${down.length} dari ${a.servers.length} server bermasalah.`
+    : `Dicari di ${a.servers.length} server, semuanya menjawab.`;
+  return `<div class="alert ${down.length ? '' : 'calm'}">${heading}
+    <ul class="srvlist">${a.servers.map(line).join('')}</ul></div>`;
+}
+
+function renderJourney(a) {
+  const t = a.timeline;
+  $('journeyPanel').classList.toggle('hide', t.length === 0);
+  if (!t.length) return;
+  const t0 = toMs(t[0].time), span = Math.max(1, toMs(t[t.length - 1].time) - t0);
+  const servers = a.servers.map(s => s.server);
+  $('journey').innerHTML = servers.map(s => {
+    const role = a.servers.find(x => x.server === s).role || '';
+    const dots = t.filter(e => e.server === s).map(e => {
+      const left = ((toMs(e.time) - t0) / span * 100).toFixed(2);
+      return `<span class="dot ${e.level}" style="left:${left}%;background:${color(s)}" title="+${fmtSec(toMs(e.time) - t0)} dtk · ${esc(e.level)} · ${esc(e.message.slice(0, 140))}"></span>`;
+    }).join('');
+    return `<div class="lane"><div class="name"><span class="stag" style="background:${color(s)}">${esc(s)}</span> <span class="hide-sm note">${esc(role)}</span></div><div class="track">${dots}</div></div>`;
+  }).join('') + `<div class="axis"><div></div><div><span>0 dtk</span><span>${fmtSec(span / 2)} dtk</span><span>${fmtSec(span)} dtk</span></div></div>`;
+}
+
+function rowHtml(e, t0, withServer) {
+  return `<tr class="${e.level}">
+      <td style="white-space:nowrap">${esc(e.time.slice(11))}</td>
+      <td class="hide-sm">+${fmtSec(toMs(e.time) - t0)}</td>
+      ${withServer ? `<td><span class="stag" style="background:${color(e.server)}">${esc(e.server)}</span></td>` : ''}
+      <td><span class="lvl ${e.level}">${esc(e.level)}</span></td>
+      <td class="msg">${markMasked(e.message)}${e.extra.length ? `<details><summary class="note">${e.extra.length} baris stack trace</summary><pre>${markMasked(e.extra.join('\n'))}</pre></details>` : ''}</td>
+    </tr>`;
+}
+
+function tableHtml(body, withServer, cols) {
+  return `<div class="tablewrap"><table><thead><tr><th>Waktu</th><th class="hide-sm">+detik</th>${withServer ? '<th>Server</th>' : ''}<th>Level</th><th>Pesan</th></tr></thead>
+    <tbody>${body || `<tr><td colspan="${cols}" class="note">Tidak ada baris.</td></tr>`}</tbody></table></div>`;
+}
+
+function renderRows(a) {
+  const hide = $('hideDebug').checked;
+  const t = a.timeline, t0 = t.length ? toMs(t[0].time) : 0;
+  const rows = t.filter(e => !(hide && e.level === 'DEBUG'));
+  $('tlTitle').textContent = `Timeline (${rows.length} baris)`;
+  $('notes').innerHTML = a.notes.map(esc).join(' ');
+  if (view === 'merged') {
+    $('timeline').innerHTML = tableHtml(rows.map(e => rowHtml(e, t0, true)).join(''), true, 5);
+    return;
+  }
+  // one block per server, in the order they are configured, so a server with no lines still says why
+  $('timeline').innerHTML = a.servers.map(s => {
+    const [icon, label] = STATUS[s.status] || ['?', s.status];
+    const own = rows.filter(e => e.server === s.server);
+    const head = `<div class="srvhead"><span class="stag" style="background:${color(s.server)}">${esc(s.server)}</span>
+      <b>${esc(s.role || '')}</b>
+      <span class="note">${icon} ${s.status === 'OK' ? s.hits + ' baris' : label} · ${s.millis} ms</span></div>`;
+    let body;
+    if (own.length) body = tableHtml(own.map(e => rowHtml(e, t0, false)).join(''), false, 4);
+    else {
+      const samples = s.unrecognizedSamples || [];
+      body = `<p class="note">${esc(label)}${s.note ? ' · ' + esc(s.note) : ''}</p>` +
+        (samples.length ? `<details open><summary class="note">Contoh baris yang tidak dikenali (data nasabah sudah disamarkan)</summary><pre>${markMasked(samples.join('\n'))}</pre></details>` : '');
+    }
+    return `<section class="srvblock">${head}${body}</section>`;
+  }).join('');
+}
+
+function ticketText(a) {
+  const d = a.diagnosis, lines = [];
+  lines.push(`[Log Scraper] ${a.query}  (${a.from.replace('T', ' ').slice(0, 16)} s/d ${a.to.replace('T', ' ').slice(0, 16)})`);
+  lines.push(`Hasil: ${d.headline}`);
+  if (d.alert) lines.push(`PERHATIAN: ${d.alert}`);
+  d.details.forEach(x => lines.push(`- ${x}`));
+  lines.push(`Server yang dicari (${a.servers.length}):`);
+  a.servers.forEach(s => lines.push(`- ${s.server}${s.role ? ' (' + s.role + ')' : ''}: ${s.status === 'OK' ? s.hits + ' baris' : (STATUS[s.status] || ['', s.status])[1]}${s.note ? ' - ' + s.note : ''}`));
+  const put = (e, withServer) => {
+    lines.push(`${e.time} ${withServer ? e.server + ' ' : ''}${e.level.padEnd(5)} ${e.message}`);
+    e.extra.slice(0, 6).forEach(x => lines.push('    ' + x));
+  };
+  if (view === 'merged') { lines.push(''); a.timeline.forEach(e => put(e, true)); }
+  else a.servers.forEach(s => {
+    lines.push('', `== ${s.server}${s.role ? ' (' + s.role + ')' : ''} ==`);
+    const own = a.timeline.filter(e => e.server === s.server);
+    if (!own.length) lines.push('(tidak ada baris)');
+    own.forEach(e => put(e, false));
+  });
+  lines.push('', 'Data nasabah sudah disamarkan otomatis.');
+  return lines.join('\n');
+}
+
+$('copy').onclick = async () => {
+  if (!last) return;
+  const text = ticketText(last);
+  try {
+    await navigator.clipboard.writeText(text);
+    $('copy').textContent = 'Tersalin ✓';
+    setTimeout(() => $('copy').textContent = 'Salin untuk tiket', 1600);
+  } catch {
+    $('copyText').value = text; $('copyBox').classList.remove('hide');
+    $('copyText').focus(); $('copyText').select();
+  }
+};
+
+syncButtons();
+$('q').focus();
+</script>
+</body>
+</html>
