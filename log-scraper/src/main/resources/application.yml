@@ -16,6 +16,7 @@ scraper:
   audit-file: ${AUDIT_FILE:audit.log}
   servers-file: ${SERVERS_FILE:servers.json}
   key-dir: ${KEY_DIR:keys}
+  masking-file: ${MASKING_FILE:masking.json}
   setup-token: ${SETUP_TOKEN:}
   # Masking is set here, never from the browser, so nobody can switch it off while looking at a ticket.
   masking:

@@ -20,6 +20,7 @@ public record ScraperProperties(
         @DefaultValue("audit.log") String auditFile,
         @DefaultValue("servers.json") String serversFile,
         @DefaultValue("keys") String keyDir,
+        @DefaultValue("masking.json") String maskingFile,
         @DefaultValue("") String setupToken,
         @DefaultValue({"/var/log", "/opt", "/app", "/srv", "/u01", "/home"}) List<String> discoveryRoots,
         @DefaultValue Masker.Rules masking) {

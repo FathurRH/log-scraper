@@ -58,9 +58,11 @@ public class SetupService {
 
     private final ScraperProperties props;
     private final SshSearcher ssh;
+    private final MaskingStore masking;
 
-    public SetupService(ScraperProperties props, SshSearcher ssh) {
+    public SetupService(ScraperProperties props, SshSearcher ssh, MaskingStore masking) {
         this.props = props;
+        this.masking = masking;
         this.ssh = ssh;
     }
 
@@ -188,12 +190,12 @@ public class SetupService {
         LogParser.Detection d = LogParser.detect(o.stdout());
         Map<Masker.Kind, Integer> masked = new EnumMap<>(Masker.Kind.class);
         List<PreviewRow> rows = d.heads().stream().limit(20).map(h -> {
-            Masker.Result m = Masker.mask(h.message(), props.masking());
+            Masker.Result m = Masker.mask(h.message(), masking.rules());
             m.counts().forEach((k, v) -> masked.merge(k, v, Integer::sum));
             return new PreviewRow(h.time().toString().replace('T', ' '), h.level(), h.thread(), h.logger(), clip(m.text()), h.format().name());
         }).toList();
         List<String> samples = d.samples().stream().map(x -> {
-            Masker.Result m = Masker.mask(x, props.masking());
+            Masker.Result m = Masker.mask(x, masking.rules());
             m.counts().forEach((k, v) -> masked.merge(k, v, Integer::sum));
             return m.text();
         }).toList();

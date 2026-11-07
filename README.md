@@ -82,7 +82,7 @@ setting change is appended to `audit.log`.
 
 ## Choose what gets masked
 
-Masking is set in `application.yml` under `scraper.masking`, not in the browser, so nobody can switch it off while looking at a ticket.
+Masking can be changed in **Pengaturan server → Penyamaran data** (admin token; switching filters off needs `SETUP_TOKEN` set, and every change is audited), or in `application.yml` under `scraper.masking`. The search page cannot change it, so nobody can switch it off while looking at a ticket. Changes made in the settings are saved to `masking.json` and win over `application.yml`.
 
 ```yaml
 scraper:

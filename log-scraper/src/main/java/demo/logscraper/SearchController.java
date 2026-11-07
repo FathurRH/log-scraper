@@ -32,7 +32,7 @@ public class SearchController {
         return service.search(q, from, to, req.getRemoteAddr());
     }
 
-    /** Which masking filters are on, so the page can show them. Read-only: masking is changed in application.yml, never from the browser. */
+    /** Which masking filters are on, so the page can show them. Read-only: masking is changed in the settings (admin token), never from this page. */
     @GetMapping("/masking")
     public Map<String, Object> masking() {
         Masker.Rules r = service.maskingRules();

@@ -51,6 +51,7 @@ services:
       AUDIT_FILE: /data/audit.log
       SERVERS_FILE: /data/servers.json
       KEY_DIR: /data/keys
+      MASKING_FILE: /data/masking.json
       SETUP_TOKEN: ${SETUP_TOKEN:-}
     volumes: ["log-scraper-data:/data"]
     depends_on: [app-01, app-02, app-03, app-04]

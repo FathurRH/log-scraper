@@ -64,6 +64,12 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); padding: 4px 6px; }
   td { border-bottom: 1px solid var(--line); padding: 4px 6px; vertical-align: top; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; margin-top: 8px; }
+  .kinds label { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+  .kinds input { width: auto; margin-top: 3px; }
+  textarea { width: 100%; font: inherit; background: var(--bg, transparent); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; box-sizing: border-box; }
+  .rule { display: grid; grid-template-columns: 1fr 2fr 70px 70px auto; gap: 6px; margin-bottom: 6px; }
+  @media (max-width: 700px) { .rule { grid-template-columns: 1fr 1fr; } }
   .hide { display: none !important; }
   .masked { background: #f1ebfb; color: #6f42c1; border-radius: 3px; padding: 0 2px; }
 </style>
@@ -113,6 +119,29 @@
         </div>
       </form>
     </div>
+
+    <div class="panel" id="maskPanel">
+      <div class="row between">
+        <h2>Penyamaran data</h2>
+        <span class="note" id="maskState"></span>
+      </div>
+      <p class="note">Data nasabah disamarkan sebelum tampil di hasil pencarian. Matikan filter hanya kalau data itu memang tidak ada di log Anda. Halaman pencarian tidak bisa mengubah ini.</p>
+      <div id="maskKinds" class="kinds"></div>
+      <label for="maskFields" style="margin-top:12px;display:block">Nama field tambahan (satu per baris)</label>
+      <textarea id="maskFields" rows="3" placeholder="no_polis&#10;kode_nasabah" maxlength="2000"></textarea>
+      <p class="note">Nilai setelah <code>nama_field=</code> atau <code>nama_field: </code> akan disamarkan.</p>
+      <label style="margin-top:12px;display:block">Aturan regex sendiri</label>
+      <p class="note">Dua angka di kanan: jumlah karakter awal dan akhir yang tetap terlihat.</p>
+      <div id="maskCustom"></div>
+      <button type="button" class="small" id="maskAddRule">+ Tambah aturan</button>
+      <label for="maskSample" style="margin-top:12px;display:block">Coba dengan contoh baris log</label>
+      <input id="maskSample" maxlength="2000" value="transfer ref=TRX-1 nik=3174011502900001 telp=081234567890 customer=Budi Santoso password=rahasia123">
+      <div class="row" style="margin-top:8px">
+        <button type="button" id="maskTry">Coba</button>
+        <button type="button" class="primary" id="maskSave">Simpan penyamaran</button>
+      </div>
+      <pre id="maskOut" class="hide" style="white-space:pre-wrap;margin:8px 0 0"></pre>
+    </div>
   </div>
 </div>
 <div id="toast" class="toast hide" role="status"></div>
@@ -149,6 +178,7 @@ async function load() {
     servers = await api('GET', '/servers');
     $('tokenPanel').classList.add('hide'); $('main').classList.remove('hide');
     render();
+    loadMask();
   } catch (e) { if (!$('tokenPanel').classList.contains('hide')) return; toast(e.message, true); }
 }
 
@@ -331,6 +361,57 @@ $('form').onsubmit = async e => {
     $('fPass').value = ''; $('formPanel').classList.add('hide'); render();
     toast(editing ? 'Perubahan disimpan' : 'Server disimpan. Lanjut: Tes koneksi.');
   } catch (err) { toast(err.message, true); }
+};
+
+// ---- masking ----------------------------------------------------------------------------------------------
+const KIND = { NIK: 'NIK (16 digit, dicek provinsi dan tanggal lahir)', KARTU: 'Nomor kartu (lolos cek Luhn)', TELEPON: 'Nomor telepon', RAHASIA: 'Password, PIN, OTP, token',
+  EMAIL: 'Email', NPWP: 'NPWP', REKENING: 'Nomor rekening / VA', NAMA: 'Nama nasabah', ALAMAT: 'Alamat', TGL_LAHIR: 'Tanggal lahir',
+  KARTU_CVV: 'CVV kartu', IP: 'Alamat IP', KUSTOM: 'Field tambahan dan regex sendiri' };
+let maskKinds = [];
+
+function ruleRow(r = {}) {
+  const d = document.createElement('div'); d.className = 'rule';
+  d.innerHTML = `<input class="rn" placeholder="Nama aturan" maxlength="40" value="${esc(r.name)}"><input class="rx" placeholder="Regex, contoh \\bPOL-\\d{8}\\b" maxlength="200" value="${esc(r.regex)}">
+    <input class="rh" type="number" min="0" max="20" title="Karakter awal yang dibiarkan" value="${r.keepHead ?? 0}"><input class="rt" type="number" min="0" max="20" title="Karakter akhir yang dibiarkan" value="${r.keepTail ?? 0}">
+    <button type="button" class="small danger">Hapus</button>`;
+  d.querySelector('button').onclick = () => d.remove();
+  return d;
+}
+
+function maskConfig() {
+  return {
+    disabled: [...document.querySelectorAll('#maskKinds input')].filter(i => !i.checked).map(i => i.value),
+    fields: $('maskFields').value.split('\n').map(x => x.trim()).filter(Boolean),
+    custom: [...document.querySelectorAll('#maskCustom .rule')].map(r => ({ name: r.querySelector('.rn').value.trim(), regex: r.querySelector('.rx').value,
+      keepHead: +r.querySelector('.rh').value || 0, keepTail: +r.querySelector('.rt').value || 0 })).filter(r => r.name || r.regex)
+  };
+}
+
+function renderMask(data) {
+  maskKinds = data.kinds; const c = data.config;
+  $('maskKinds').innerHTML = maskKinds.map(k => `<label><input type="checkbox" value="${k}" ${c.disabled.includes(k) ? '' : 'checked'}> <span>${esc(KIND[k] || k)}</span></label>`).join('');
+  $('maskFields').value = c.fields.join('\n');
+  $('maskCustom').replaceChildren(...c.custom.map(ruleRow));
+  $('maskState').textContent = c.disabled.length ? `${c.disabled.length} filter dimatikan` : 'Semua filter aktif';
+  $('maskState').dataset.canWeaken = data.canWeaken;
+}
+
+async function loadMask() {
+  try { renderMask(await api('GET', '/masking')); } catch (e) { toast(e.message, true); }
+}
+$('maskAddRule').onclick = () => $('maskCustom').append(ruleRow());
+$('maskTry').onclick = async () => {
+  try {
+    const r = await api('POST', '/masking/test', { text: $('maskSample').value, config: maskConfig() });
+    const out = $('maskOut'); out.classList.remove('hide'); out.innerHTML = markMasked(r.masked);
+  } catch (e) { toast(e.message, true); }
+};
+$('maskSave').onclick = async () => {
+  try {
+    const r = await api('PUT', '/masking', maskConfig());
+    renderMask({ kinds: maskKinds, config: r.config, canWeaken: $('maskState').dataset.canWeaken === 'true' });
+    toast('Penyamaran disimpan. Berlaku di pencarian berikutnya.');
+  } catch (e) { toast(e.message, true); }
 };
 
 load();

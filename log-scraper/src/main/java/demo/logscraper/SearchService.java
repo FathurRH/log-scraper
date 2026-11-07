@@ -40,10 +40,12 @@ public class SearchService {
     private final ScraperProperties props;
     private final ServerStore store;
     private final SshSearcher ssh;
+    private final MaskingStore masking;
     private final ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public SearchService(ScraperProperties props, ServerStore store, SshSearcher ssh) {
+    public SearchService(ScraperProperties props, ServerStore store, SshSearcher ssh, MaskingStore masking) {
         this.props = props;
+        this.masking = masking;
         this.store = store;
         this.ssh = ssh;
     }
@@ -102,7 +104,7 @@ public class SearchService {
                 st = SshSearcher.Status.FORMAT_TIDAK_DIKENALI;
                 note = parsed.unrecognized() + " baris memuat kata ini tetapi formatnya belum dikenali";
             }
-            List<String> samples = parsed.samples().stream().map(x -> Masker.mask(x, props.masking()).text()).toList();
+            List<String> samples = parsed.samples().stream().map(x -> Masker.mask(x, masking.rules()).text()).toList();
             statuses.add(new ServerStatus(s.name(), roles.get(s.name()), st, inRange.size(), o.millis(), note,
                     parsed.unrecognized(), samples));
             all.addAll(inRange);
@@ -117,10 +119,10 @@ public class SearchService {
         List<Line> lines = new ArrayList<>();
         List<LogEntry> maskedEntries = new ArrayList<>();
         for (LogEntry e : shown) {
-            Masker.Result m = Masker.mask(e.message(), props.masking());
+            Masker.Result m = Masker.mask(e.message(), masking.rules());
             m.counts().forEach((k, v) -> masked.merge(k, v, Integer::sum));
             List<String> extra = e.extra().stream().map(x -> {
-                Masker.Result r = Masker.mask(x, props.masking());
+                Masker.Result r = Masker.mask(x, masking.rules());
                 r.counts().forEach((k, v) -> masked.merge(k, v, Integer::sum));
                 return r.text();
             }).toList();
@@ -141,7 +143,7 @@ public class SearchService {
                 suggestions, ms, servers.size() * props.manualMinutesPerServer());
     }
 
-    public Masker.Rules maskingRules() { return props.masking(); }
+    public Masker.Rules maskingRules() { return masking.rules(); }
 
     public List<String> sampleIds() { return props.sampleIds(); }
 

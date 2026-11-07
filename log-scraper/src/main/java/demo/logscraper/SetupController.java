@@ -20,8 +20,10 @@ public class SetupController {
     private final ServerStore store;
     private final SetupService setup;
     private final ScraperProperties props;
+    private final MaskingStore masking;
 
-    public SetupController(ServerStore store, SetupService setup, ScraperProperties props) {
+    public SetupController(ServerStore store, SetupService setup, ScraperProperties props, MaskingStore masking) {
+        this.masking = masking;
         this.store = store;
         this.setup = setup;
         this.props = props;
@@ -112,6 +114,49 @@ public class SetupController {
                                               @RequestHeader(value = "X-Setup-Token", required = false) String token) {
         auth(token);
         return setup.preview(saved(name), in.path(), in.lines() == null ? 20 : in.lines());
+    }
+
+    public record MaskTest(String text, MaskingStore.Config config) {}
+
+    /** Masking rules in force, plus every built-in filter so the settings page can list them. */
+    @GetMapping("/masking")
+    public Map<String, Object> maskingGet(@RequestHeader(value = "X-Setup-Token", required = false) String token) {
+        auth(token);
+        return Map.of("config", masking.config(), "kinds", java.util.Arrays.stream(Masker.Kind.values()).map(Enum::name).toList(),
+                "canWeaken", tokenRequired());
+    }
+
+    /**
+     * Replaces the masking rules. Switching a filter off or dropping a rule makes masking weaker, so it is only allowed
+     * when an admin token is set: without one, anyone who can reach this port could expose customer data.
+     */
+    @PutMapping("/masking")
+    public Map<String, Object> maskingPut(@RequestBody MaskingStore.Config in,
+                                          @RequestHeader(value = "X-Setup-Token", required = false) String token, HttpServletRequest req) {
+        auth(token);
+        Masker.Rules next = MaskingStore.toRules(in);
+        boolean weaker = masking.weakens(next);
+        if (weaker && !tokenRequired())
+            throw new ApiException(403, "Penyamaran hanya bisa dikurangi kalau token admin (SETUP_TOKEN) sudah diatur. Menambah penyamaran tetap boleh.");
+        masking.save(next);
+        setup.audit(req.getRemoteAddr(), "ubah penyamaran: " + next.disabled().size() + " filter dimatikan, " + next.fields().size()
+                + " field tambahan, " + next.custom().size() + " aturan regex" + (weaker ? " (DIKURANGI)" : ""));
+        return Map.of("config", masking.config());
+    }
+
+    /** Try rules on a made-up line before saving. The text is masked and returned; nothing is stored or logged. */
+    @PostMapping("/masking/test")
+    public Map<String, Object> maskingTest(@RequestBody MaskTest in,
+                                           @RequestHeader(value = "X-Setup-Token", required = false) String token) {
+        auth(token);
+        if (in.text() == null || in.text().length() > 2000) throw new ApiException(400, "Teks contoh harus ada dan maksimal 2000 karakter.");
+        Masker.Rules r = in.config() == null ? masking.rules() : MaskingStore.toRules(in.config());
+        Masker.Result m = Masker.mask(in.text(), r);
+        return Map.of("masked", m.text(), "counts", m.counts());
+    }
+
+    private boolean tokenRequired() {
+        return props.setupToken() != null && !props.setupToken().isBlank();
     }
 
     private ScraperProperties.Server saved(String name) {

@@ -14,7 +14,7 @@ class SetupTest {
     private static ScraperProperties props(Path dir) {
         return new ScraperProperties(List.of(), 5, 15, 500, 40, 3, List.of(), List.of(), List.of(),
                 dir.resolve("audit.log").toString(), dir.resolve("servers.json").toString(), dir.resolve("keys").toString(),
-                "", List.of("/var/log"), Masker.Rules.DEFAULT);
+                dir.resolve("masking.json").toString(), "", List.of("/var/log"), Masker.Rules.DEFAULT);
     }
 
     @Test
@@ -77,7 +77,7 @@ class SetupTest {
 
     @Test
     void generatesAKeyAndRefusesToOverwriteIt(@TempDir Path dir) throws Exception {
-        var setup = new SetupService(props(dir), null);
+        var setup = new SetupService(props(dir), null, new MaskingStore(props(dir)));
         var k = setup.generateKey("app-01", false);
         assertThat(k.publicKey()).startsWith("ecdsa-sha2-nistp256 ");
         assertThat(k.authorizedKeysLine()).startsWith("restrict ecdsa-sha2-nistp256 ");

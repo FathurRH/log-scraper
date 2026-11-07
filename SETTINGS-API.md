@@ -15,6 +15,9 @@ Passwords can be written but are never returned, logged or stored in plain text.
 | `POST /servers/{name}/discover` | Step 2: find log folders from an ID that really happened |
 | `POST /servers/{name}/check` | Which files does a path or pattern match? |
 | `POST /servers/{name}/preview` | Step 3: first lines of a log, format, masked |
+| `GET /masking` | Masking rules in force and the list of filters |
+| `PUT /masking` | Replace the rules: `{"disabled":["EMAIL"],"fields":["polis"],"custom":[{"name":"x","regex":"POL-\\d{8}","keepHead":0,"keepTail":0}]}`. Making masking weaker needs `SETUP_TOKEN` to be set (403 otherwise); every change is audited |
+| `POST /masking/test` | Mask a sample `{"text":"...","config":{...}}` without saving |
 
 There is also a web page for all of this: `http://localhost:8090/settings.html` (it asks for the token when `SETUP_TOKEN` is set).
 
