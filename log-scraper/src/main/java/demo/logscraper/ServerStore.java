@@ -97,25 +97,28 @@ public class ServerStore {
 
     public static void validate(ScraperProperties.Server s) {
         if (s.name() == null || !NAME.matcher(s.name()).matches())
-            throw bad("Nama server: 1 sampai 40 karakter, huruf, angka, titik, garis bawah atau minus.");
+            throw bad(Lang.t("Nama server: 1 sampai 40 karakter, huruf, angka, titik, garis bawah atau minus.", "Server name: 1 to 40 characters, letters, digits, dot, underscore or minus."));
         if (s.role() != null && (s.role().length() > 60 || s.role().chars().anyMatch(c -> c < 32)))
-            throw bad("Peran server terlalu panjang (maksimal 60 karakter).");
-        if (s.host() == null || !HOST.matcher(s.host()).matches()) throw bad("Host tidak valid. Isi nama server atau alamat IP.");
-        if (s.port() < 1 || s.port() > 65535) throw bad("Port harus antara 1 dan 65535.");
-        if (s.username() == null || !USER.matcher(s.username()).matches()) throw bad("Username tidak valid.");
+            throw bad(Lang.t("Peran server terlalu panjang (maksimal 60 karakter).", "Server role is too long (at most 60 characters)."));
+        if (s.host() == null || !HOST.matcher(s.host()).matches()) throw bad(Lang.t("Host tidak valid. Isi nama server atau alamat IP.", "Invalid host. Enter a server name or an IP address."));
+        if (s.port() < 1 || s.port() > 65535) throw bad(Lang.t("Port harus antara 1 dan 65535.", "Port must be between 1 and 65535."));
+        if (s.username() == null || !USER.matcher(s.username()).matches()) throw bad(Lang.t("Username tidak valid.", "Invalid username."));
         if (s.keyFile() != null && !KEY.matcher(s.keyFile()).matches())
-            throw bad("Nama file kunci hanya huruf, angka, titik, garis bawah dan minus (file ada di folder kunci).");
+            throw bad(Lang.t("Nama file kunci hanya huruf, angka, titik, garis bawah dan minus (file ada di folder kunci).", "Key file name: only letters, digits, dot, underscore and minus (the file lives in the key folder)."));
         if (s.hostKeyFingerprint() != null && !FINGERPRINT.matcher(s.hostKeyFingerprint()).matches())
-            throw bad("Sidik jari server harus berbentuk SHA256:... seperti yang ditampilkan Tes koneksi.");
-        if (s.logPaths().size() > 20) throw bad("Maksimal 20 folder atau pola log per server.");
+            throw bad(Lang.t("Sidik jari server harus berbentuk SHA256:... seperti yang ditampilkan Tes koneksi.", "The server fingerprint must look like SHA256:..., as shown by Test connection."));
+        if (s.logPaths().size() > 20) throw bad(Lang.t("Maksimal 20 folder atau pola log per server.", "At most 20 log folders or patterns per server."));
         for (String p : s.logPaths()) validatePath(p);
     }
 
     /** A log path or pattern that is safe to hand to a remote shell. */
     public static void validatePath(String p) {
         if (p == null || !PATH.matcher(p).matches() || p.contains(".."))
-            throw bad("Folder log \"" + (p == null ? "" : p) + "\" tidak valid. Pakai path lengkap yang diawali / "
-                    + "(huruf, angka dan . _ - + @ %, tanda * dan ? untuk pola), tanpa spasi atau tanda kutip.");
+            throw bad(Lang.en()
+                    ? "Log folder \"" + (p == null ? "" : p) + "\" is not valid. Use a full path starting with / "
+                      + "(letters, digits and . _ - + @ %, * and ? for patterns), without spaces or quotes."
+                    : "Folder log \"" + (p == null ? "" : p) + "\" tidak valid. Pakai path lengkap yang diawali / "
+                      + "(huruf, angka dan . _ - + @ %, tanda * dan ? untuk pola), tanpa spasi atau tanda kutip.");
     }
 
     private static ScraperProperties.Server withPassword(ScraperProperties.Server x, String password) {
@@ -139,7 +142,7 @@ public class ServerStore {
             mapper.writerWithDefaultPrettyPrinter().writeValue(tmp.toFile(), list.stream().map(x -> withPassword(x, box.seal(x.password()))).toList());
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
-            throw new ApiException(500, "Pengaturan tidak bisa disimpan ke " + file + ": " + e.getMessage());
+            throw new ApiException(500, Lang.t("Pengaturan tidak bisa disimpan ke ", "Settings could not be saved to ") + file + ": " + e.getMessage());
         }
     }
 }

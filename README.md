@@ -24,6 +24,15 @@ open http://localhost:8090                # wait ~10 s for the first requests
 Try `REQ-88231` (fails, but the data service still saves the record twice), `REQ-88232` (succeeds), `REQ-88233` (rejected: quota exceeded),
 a typo like `req-8823l`, or `docker compose stop app-04` to see a server that is down.
 
+## Language, filters and many servers
+
+- **Bahasa Indonesia or English:** pick it under Pengaturan → Bahasa. Both pages and every message the server writes
+  (verdicts, errors, setup steps) follow it; the browser sends `X-Lang: en` (or `?lang=en`). The logs themselves are not translated.
+- **Timeline filters and pages:** filter by server, level (ERROR only, WARN and ERROR, without DEBUG) or message text;
+  10 lines per page by default, 25/50/100 to choose (remembered in the browser).
+- **Many servers:** servers with a problem are shown first and grouped by the same problem, the rest fold behind
+  "Tampilkan semua"; servers without lines are listed in one line. Settings gets a search box, a filter, collapsible cards and pages.
+
 ## How it works
 
 1. **Search:** `GET /api/search?q=REQ-88231&hours=24`. The term is tidied (spaces, pasted brackets, case), checked against

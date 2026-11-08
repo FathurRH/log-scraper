@@ -14,7 +14,7 @@ public final class Diagnosis {
                          String alert) {}
 
     public static Result of(List<LogEntry> timeline, Map<String, String> roles, List<String> committed, List<String> failed) {
-        if (timeline.isEmpty()) return new Result(Verdict.TIDAK_JELAS, "Tidak ada log untuk ID ini.", List.of(), List.of(), 0, null);
+        if (timeline.isEmpty()) return new Result(Verdict.TIDAK_JELAS, Lang.t("Tidak ada log untuk ID ini.", "No logs for this ID."), List.of(), List.of(), 0, null);
         LogEntry first = timeline.getFirst(), last = timeline.getLast();
         List<String> path = timeline.stream().map(LogEntry::server).distinct().toList();
         long span = Duration.between(first.time(), last.time()).toMillis();
@@ -27,27 +27,33 @@ public final class Diagnosis {
                 .or(() -> reportedFailed);
 
         List<String> details = new ArrayList<>();
-        details.add("Melewati " + path.size() + " server: " + String.join(" → ", path.stream().map(s -> label(s, roles)).toList()) + ".");
+        details.add(Lang.t("Melewati ", "Went through ") + path.size() + Lang.t(" server: ", " servers: ") + String.join(" → ", path.stream().map(s -> label(s, roles)).toList()) + ".");
         String alert = null;
         long movedCount = timeline.stream().filter(e -> containsAny(e.message(), committed)).count();
         if (reportedFailed.isPresent() && moved.isPresent()) {
-            alert = "Data sudah tersimpan " + (movedCount > 1 ? movedCount + " kali " : "") + "di " + label(moved.get().server(), roles)
-                    + ", tetapi proses dilaporkan GAGAL ke pengguna. Kemungkinan perubahan sudah terjadi"
-                    + (movedCount > 1 ? " lebih dari sekali" : "") + " tanpa konfirmasi: cek dan batalkan bila perlu.";
+            alert = Lang.en()
+                    ? "Data was already saved " + (movedCount > 1 ? movedCount + " times " : "") + "on " + label(moved.get().server(), roles)
+                      + ", but the request was reported as FAILED to the user. The change probably happened"
+                      + (movedCount > 1 ? " more than once" : "") + " without confirmation: check it and undo it if needed."
+                    : "Data sudah tersimpan " + (movedCount > 1 ? movedCount + " kali " : "") + "di " + label(moved.get().server(), roles)
+                      + ", tetapi proses dilaporkan GAGAL ke pengguna. Kemungkinan perubahan sudah terjadi"
+                      + (movedCount > 1 ? " lebih dari sekali" : "") + " tanpa konfirmasi: cek dan batalkan bila perlu.";
         } else if (movedCount > 1) {
-            alert = "Data tersimpan " + movedCount + " kali di " + label(moved.get().server(), roles) + " untuk satu ID. Cek kemungkinan proses ganda.";
+            alert = Lang.en()
+                    ? "Data was saved " + movedCount + " times on " + label(moved.get().server(), roles) + " for one ID. Check for a duplicate run."
+                    : "Data tersimpan " + movedCount + " kali di " + label(moved.get().server(), roles) + " untuk satu ID. Cek kemungkinan proses ganda.";
         }
         if (problem.isPresent()) {
             LogEntry p = problem.get();
             String reason = shortReason(p);
-            details.add("Masalah pertama: " + p.level() + " di " + label(p.server(), roles)
+            details.add(Lang.t("Masalah pertama: ", "First problem: ") + p.level() + Lang.t(" di ", " on ") + label(p.server(), roles)
                     + (p.logger().isBlank() ? "" : ", " + p.logger()) + ".");
             p.extra().stream().filter(l -> l.startsWith("Caused by")).findFirst()
-                    .ifPresent(c -> details.add("Penyebab (dilaporkan " + p.server() + "): " + c.replaceFirst("^Caused by: ", "")));
-            return new Result(Verdict.GAGAL, "Putus di " + label(p.server(), roles) + ", " + after(first, p)
-                    + " setelah request masuk: " + reason, details, path, span, alert);
+                    .ifPresent(c -> details.add(Lang.t("Penyebab (dilaporkan ", "Cause (reported by ") + p.server() + "): " + c.replaceFirst("^Caused by: ", "")));
+            return new Result(Verdict.GAGAL, Lang.t("Putus di ", "Broke at ") + label(p.server(), roles) + ", " + after(first, p)
+                    + Lang.t(" setelah request masuk: ", " after the request came in: ") + reason, details, path, span, alert);
         }
-        return new Result(Verdict.BERHASIL, "Selesai normal di " + label(last.server(), roles) + " dalam " + seconds(span) + ".",
+        return new Result(Verdict.BERHASIL, Lang.t("Selesai normal di ", "Completed normally on ") + label(last.server(), roles) + Lang.t(" dalam ", " in ") + seconds(span) + ".",
                 details, path, span, alert);
     }
 
@@ -55,10 +61,13 @@ public final class Diagnosis {
     public static Result freeText(List<LogEntry> timeline, String q) {
         List<String> path = timeline.stream().map(LogEntry::server).distinct().toList();
         long errors = timeline.stream().filter(LogEntry::isError).count();
-        String head = timeline.isEmpty() ? "Tidak ada log untuk kata ini."
+        String head = timeline.isEmpty() ? Lang.t("Tidak ada log untuk kata ini.", "No logs for this word.")
+                : Lang.en()
+                ? "\"" + q + "\" appears in " + timeline.size() + " lines on " + path.size() + " servers"
+                  + (errors > 0 ? ", " + errors + " of them ERROR." : ".")
                 : "Kata \"" + q + "\" muncul di " + timeline.size() + " baris dari " + path.size() + " server"
                   + (errors > 0 ? ", " + errors + " di antaranya ERROR." : ".");
-        return new Result(Verdict.TIDAK_JELAS, head, List.of("Cari satu ID request untuk melihat di mana prosesnya putus."),
+        return new Result(Verdict.TIDAK_JELAS, head, List.of(Lang.t("Cari satu ID request untuk melihat di mana prosesnya putus.", "Search for one request ID to see where it broke.")),
                 path, 0, null);
     }
 
@@ -86,7 +95,8 @@ public final class Diagnosis {
     }
 
     static String seconds(long ms) {
-        return String.format(Locale.of("id", "ID"), "%.1f detik", ms / 1000.0);
+        return Lang.en() ? String.format(Locale.ROOT, "%.1f seconds", ms / 1000.0)
+                : String.format(Locale.of("id", "ID"), "%.1f detik", ms / 1000.0);
     }
 
     private Diagnosis() {}

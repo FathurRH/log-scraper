@@ -27,17 +27,17 @@ import java.util.regex.Pattern;
  */
 public final class LogParser {
     public enum Format {
-        SPRING("Spring Boot / Logback"),
-        ISO("Tanggal ISO dengan huruf T"),
-        JSON("JSON satu baris per log"),
-        BRACKET("Log4j dengan kurung siku"),
-        TOMCAT("Tomcat / WebLogic");
+        SPRING("Spring Boot / Logback", "Spring Boot / Logback"),
+        ISO("Tanggal ISO dengan huruf T", "ISO date with a T"),
+        JSON("JSON satu baris per log", "JSON, one line per entry"),
+        BRACKET("Log4j dengan kurung siku", "Log4j with square brackets"),
+        TOMCAT("Tomcat / WebLogic", "Tomcat / WebLogic");
 
-        private final String label;
+        private final String label, labelEn;
 
-        Format(String label) { this.label = label; }
+        Format(String label, String labelEn) { this.label = label; this.labelEn = labelEn; }
 
-        public String label() { return label; }
+        public String label() { return Lang.t(label, labelEn); }
     }
 
     /** The first line of one log event, before any stack-trace lines are attached. */

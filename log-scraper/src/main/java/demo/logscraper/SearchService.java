@@ -52,16 +52,16 @@ public class SearchService {
 
     /** Tidies what people paste from WhatsApp or a ticket ("REQ-88231)." or "  req-88231 ") and refuses anything unsafe. */
     public static String normalize(String raw) {
-        if (raw == null) throw new BadQuery("Masukkan ID request atau kata yang dicari.");
+        if (raw == null) throw new BadQuery(Lang.t("Masukkan ID request atau kata yang dicari.", "Enter a request ID or a word to search for."));
         String q = raw.strip().replaceAll("^[\"'`(\\[{<]+|[\"'`)\\]}>.,;:!?]+$", "").strip();
-        if (q.isEmpty()) throw new BadQuery("Masukkan ID request atau kata yang dicari.");
-        if (q.chars().anyMatch(c -> c < 32)) throw new BadQuery("Cari satu baris saja, tanpa enter atau tab.");
-        if (q.length() < 4) throw new BadQuery("Terlalu pendek: minimal 4 karakter supaya hasilnya tidak ribuan baris.");
+        if (q.isEmpty()) throw new BadQuery(Lang.t("Masukkan ID request atau kata yang dicari.", "Enter a request ID or a word to search for."));
+        if (q.chars().anyMatch(c -> c < 32)) throw new BadQuery(Lang.t("Cari satu baris saja, tanpa enter atau tab.", "Search for one line only, without enter or tab."));
+        if (q.length() < 4) throw new BadQuery(Lang.t("Terlalu pendek: minimal 4 karakter supaya hasilnya tidak ribuan baris.", "Too short: at least 4 characters, so the result is not thousands of lines."));
         if (q.length() > 80) throw new BadQuery("Terlalu panjang: maksimal 80 karakter.");
         if (!ALLOWED.matcher(q).matches()) {
             String bad = q.chars().filter(c -> !ALLOWED.matcher(String.valueOf((char) c)).matches())
                     .mapToObj(c -> String.valueOf((char) c)).distinct().collect(Collectors.joining(" "));
-            throw new BadQuery("Karakter  " + bad + "  tidak didukung. Pakai huruf, angka dan tanda - _ . : @ /");
+            throw new BadQuery(Lang.en() ? "Character  " + bad + "  is not supported. Use letters, digits and - _ . : @ /" : "Karakter  " + bad + "  tidak didukung. Pakai huruf, angka dan tanda - _ . : @ /");
         }
         if (ID_LIKE.matcher(q).matches()) q = q.toUpperCase(Locale.ROOT);
         return q;
@@ -75,16 +75,16 @@ public class SearchService {
         LocalDateTime now = LocalDateTime.now();
         if (to == null) to = now;
         if (from == null) from = to.minusHours(24);
-        if (from.isAfter(to)) { var tmp = from; from = to; to = tmp; notes.add("Waktu mulai dan selesai tertukar, sudah dibalik."); }
-        if (Duration.between(from, to).toDays() > 31) { from = to.minusDays(31); notes.add("Rentang dibatasi 31 hari terakhir."); }
+        if (from.isAfter(to)) { var tmp = from; from = to; to = tmp; notes.add(Lang.t("Waktu mulai dan selesai tertukar, sudah dibalik.", "Start and end time were swapped, so they were reversed.")); }
+        if (Duration.between(from, to).toDays() > 31) { from = to.minusDays(31); notes.add(Lang.t("Rentang dibatasi 31 hari terakhir.", "The range was limited to the last 31 days.")); }
 
         List<ScraperProperties.Server> servers = store.all();
         String cmd = grepCommand(q, props.contextLines());
         Duration timeout = Duration.ofSeconds(props.timeoutSeconds());
         Map<String, Future<SshSearcher.Outcome>> futures = new LinkedHashMap<>();
-        for (var s : servers) futures.put(s.name(), pool.submit(() -> s.logPaths().isEmpty()
-                ? new SshSearcher.Outcome(s.name(), SshSearcher.Status.BELUM_DIATUR, "", "Folder log belum diatur untuk server ini", 0)
-                : ssh.run(s, cmd + " " + paths(s), timeout)));
+        for (var s : servers) futures.put(s.name(), pool.submit(Lang.wrap(() -> s.logPaths().isEmpty()
+                ? new SshSearcher.Outcome(s.name(), SshSearcher.Status.BELUM_DIATUR, "", Lang.t("Folder log belum diatur untuk server ini", "No log folder is set for this server"), 0)
+                : ssh.run(s, cmd + " " + paths(s), timeout))));
 
         List<LogEntry> all = new ArrayList<>();
         List<ServerStatus> statuses = new ArrayList<>();
@@ -102,7 +102,7 @@ public class SearchService {
             // lines that mention the term but fit no known log format must not look like "not found"
             if (o.status() == SshSearcher.Status.OK && found.isEmpty() && parsed.unrecognized() > 0) {
                 st = SshSearcher.Status.FORMAT_TIDAK_DIKENALI;
-                note = parsed.unrecognized() + " baris memuat kata ini tetapi formatnya belum dikenali";
+                note = parsed.unrecognized() + Lang.t(" baris memuat kata ini tetapi formatnya belum dikenali", " lines contain this word but their format is not recognized yet");
             }
             List<String> samples = parsed.samples().stream().map(x -> Masker.mask(x, masking.rules()).text()).toList();
             statuses.add(new ServerStatus(s.name(), roles.get(s.name()), st, inRange.size(), o.millis(), note,
@@ -113,7 +113,8 @@ public class SearchService {
         int total = all.size();
         boolean truncated = total > props.maxResults();
         List<LogEntry> shown = truncated ? all.subList(0, props.maxResults()) : all;
-        if (truncated) notes.add("Menampilkan " + props.maxResults() + " dari " + total + " baris. Persempit rentang waktu atau kata kunci.");
+        if (truncated) notes.add(Lang.en() ? "Showing " + props.maxResults() + " of " + total + " lines. Narrow the time range or the search term."
+                : "Menampilkan " + props.maxResults() + " dari " + total + " baris. Persempit rentang waktu atau kata kunci.");
 
         Map<Masker.Kind, Integer> masked = new EnumMap<>(Masker.Kind.class);
         List<Line> lines = new ArrayList<>();
@@ -167,7 +168,7 @@ public class SearchService {
         String cmd = "LC_ALL=C grep -h -o -E " + quote(prefix + "-[A-Za-z0-9]{3,12}");
         servers = servers.stream().filter(x -> !x.logPaths().isEmpty()).toList();
         List<Future<SshSearcher.Outcome>> fs = servers.stream()
-                .map(s -> pool.submit(() -> ssh.run(s, cmd + " " + paths(s) + " | sort -u | head -20000", timeout))).toList();
+                .map(s -> pool.submit(Lang.wrap(() -> ssh.run(s, cmd + " " + paths(s) + " | sort -u | head -20000", timeout)))).toList();
         Set<String> ids = new TreeSet<>();
         for (int i = 0; i < fs.size(); i++) {
             var o = get(fs.get(i), servers.get(i).name());
@@ -203,7 +204,7 @@ public class SearchService {
             return f.get(props.timeoutSeconds() * 3L, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
             f.cancel(true);
-            return new SshSearcher.Outcome(server, SshSearcher.Status.TIMEOUT, "", "Server tidak menjawab", props.timeoutSeconds() * 3000L);
+            return new SshSearcher.Outcome(server, SshSearcher.Status.TIMEOUT, "", Lang.t("Server tidak menjawab", "The server did not answer"), props.timeoutSeconds() * 3000L);
         }
     }
 

@@ -26,7 +26,7 @@ public class SearchController {
                                        @RequestParam(required = false) Integer hours,
                                        HttpServletRequest req) {
         if (hours != null && from == null) {
-            if (hours < 1 || hours > 24 * 31) throw new SearchService.BadQuery("Rentang waktu harus antara 1 jam dan 31 hari.");
+            if (hours < 1 || hours > 24 * 31) throw new SearchService.BadQuery(Lang.t("Rentang waktu harus antara 1 jam dan 31 hari.", "The time range must be between 1 hour and 31 days."));
             from = (to == null ? LocalDateTime.now() : to).minusHours(hours);
         }
         return service.search(q, from, to, req.getRemoteAddr());
@@ -53,6 +53,6 @@ public class SearchController {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, String>> badTime(MethodArgumentTypeMismatchException e) {
-        return ResponseEntity.badRequest().body(Map.of("error", "Format waktu tidak dikenali. Contoh: 2026-11-02T21:00"));
+        return ResponseEntity.badRequest().body(Map.of("error", Lang.t("Format waktu tidak dikenali. Contoh: 2026-11-02T21:00", "Time format not recognized. Example: 2026-11-02T21:00")));
     }
 }

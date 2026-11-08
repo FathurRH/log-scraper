@@ -73,42 +73,42 @@ public class SetupService {
         Duration timeout = Duration.ofSeconds(props.timeoutSeconds());
         try (Socket sock = new Socket()) {
             sock.connect(new InetSocketAddress(s.host(), s.port()), props.timeoutSeconds() * 1000);
-            steps.add(new Step("Jaringan", true, "Port " + s.port() + " di " + s.host() + " terbuka"));
+            steps.add(new Step(Lang.t("Jaringan", "Network"), true, Lang.en() ? "Port " + s.port() + " on " + s.host() + " is open" : "Port " + s.port() + " di " + s.host() + " terbuka"));
         } catch (IOException e) {
-            steps.add(new Step("Jaringan", false, "Tidak bisa membuka " + s.host() + ":" + s.port() + " (" + e.getClass().getSimpleName() + ")"));
-            for (String later : List.of("Identitas server", "Login", "Perintah baca"))
-                steps.add(new Step(later, false, "Dilewati: server belum terjangkau"));
+            steps.add(new Step(Lang.t("Jaringan", "Network"), false, Lang.t("Tidak bisa membuka ", "Cannot open ") + s.host() + ":" + s.port() + " (" + e.getClass().getSimpleName() + ")"));
+            for (String later : List.of(Lang.t("Identitas server", "Server identity"), "Login", Lang.t("Perintah baca", "Read command")))
+                steps.add(new Step(later, false, Lang.t("Dilewati: server belum terjangkau", "Skipped: server not reachable yet")));
             return new TestResult(false, steps, null, hintFor(SshSearcher.Status.TIDAK_TERJANGKAU));
         }
         SshSearcher.Outcome o = ssh.run(s, "grep --version | head -n 1", timeout);
         String fp = o.fingerprint();
         boolean pinned = s.hostKeyFingerprint() != null;
         boolean keyOk = o.status() != SshSearcher.Status.KUNCI_BERUBAH;
-        String keyDetail = fp == null ? "Server tidak menyebutkan kunci"
-                : fp + (pinned ? (keyOk ? " (cocok dengan yang disimpan)" : " (BERBEDA dari yang disimpan)")
-                        : " (belum disimpan: isi hostKeyFingerprint untuk mengunci)");
-        steps.add(new Step("Identitas server", keyOk && fp != null, keyDetail));
+        String keyDetail = fp == null ? Lang.t("Server tidak menyebutkan kunci", "The server did not present a key")
+                : fp + (pinned ? (keyOk ? Lang.t(" (cocok dengan yang disimpan)", " (matches the saved one)") : Lang.t(" (BERBEDA dari yang disimpan)", " (DIFFERENT from the saved one)"))
+                        : Lang.t(" (belum disimpan: isi hostKeyFingerprint untuk mengunci)", " (not saved: set hostKeyFingerprint to pin it)"));
+        steps.add(new Step(Lang.t("Identitas server", "Server identity"), keyOk && fp != null, keyDetail));
         boolean loggedIn = o.status() == SshSearcher.Status.OK || o.status() == SshSearcher.Status.KOSONG
                 || o.status() == SshSearcher.Status.DITOLAK;
-        steps.add(new Step("Login", loggedIn, loggedIn ? "Berhasil sebagai " + s.username() : String.valueOf(o.note())));
+        steps.add(new Step("Login", loggedIn, loggedIn ? Lang.t("Berhasil sebagai ", "Signed in as ") + s.username() : String.valueOf(o.note())));
         if (!loggedIn) {
-            steps.add(new Step("Perintah baca", false, "Dilewati: login belum berhasil"));
+            steps.add(new Step(Lang.t("Perintah baca", "Read command"), false, Lang.t("Dilewati: login belum berhasil", "Skipped: login has not worked yet")));
             return new TestResult(false, steps, fp, hintFor(o.status()));
         }
         boolean grepOk = o.status() == SshSearcher.Status.OK;
         String first = o.stdout().lines().findFirst().orElse("").strip();
-        steps.add(new Step("Perintah baca", grepOk, grepOk ? "grep tersedia: " + first : String.valueOf(o.note())));
+        steps.add(new Step(Lang.t("Perintah baca", "Read command"), grepOk, grepOk ? Lang.t("grep tersedia: ", "grep available: ") + first : String.valueOf(o.note())));
         return new TestResult(grepOk, steps, fp, grepOk ? null : hintFor(o.status()));
     }
 
     static String hintFor(SshSearcher.Status st) {
         return switch (st) {
-            case TIDAK_TERJANGKAU -> "Cek host dan port, VPN dan firewall. Minta tim server menjalankan: nc -vz <host> <port>";
-            case KUNCI_BERUBAH -> "Jangan lanjut dulu. Pastikan dengan tim server bahwa server memang dibangun ulang, lalu simpan sidik jari yang baru";
-            case LOGIN_GAGAL -> "Cek username. Untuk kunci SSH: pastikan baris dari endpoint /key sudah ada di ~/.ssh/authorized_keys akun itu. Untuk password: pastikan login password diizinkan";
-            case DITOLAK -> "Akun read-only menolak perintah. Minta tim server mengizinkan grep (dan zgrep untuk file .gz)";
-            case TIMEOUT -> "Server atau jaringan lambat. Coba lagi, atau naikkan scraper.timeout-seconds";
-            default -> "Lihat pesan di atas";
+            case TIDAK_TERJANGKAU -> Lang.t("Cek host dan port, VPN dan firewall. Minta tim server menjalankan: nc -vz <host> <port>", "Check the host and port, VPN and firewall. Ask the server team to run: nc -vz <host> <port>");
+            case KUNCI_BERUBAH -> Lang.t("Jangan lanjut dulu. Pastikan dengan tim server bahwa server memang dibangun ulang, lalu simpan sidik jari yang baru", "Stop here. Confirm with the server team that the server really was rebuilt, then save the new fingerprint");
+            case LOGIN_GAGAL -> Lang.t("Cek username. Untuk kunci SSH: pastikan baris dari endpoint /key sudah ada di ~/.ssh/authorized_keys akun itu. Untuk password: pastikan login password diizinkan", "Check the username. For an SSH key: make sure the line from the /key endpoint is in that account's ~/.ssh/authorized_keys. For a password: make sure password login is allowed");
+            case DITOLAK -> Lang.t("Akun read-only menolak perintah. Minta tim server mengizinkan grep (dan zgrep untuk file .gz)", "The read-only account refused the command. Ask the server team to allow grep (and zgrep for .gz files)");
+            case TIMEOUT -> Lang.t("Server atau jaringan lambat. Coba lagi, atau naikkan scraper.timeout-seconds", "The server or network is slow. Try again, or raise scraper.timeout-seconds");
+            default -> Lang.t("Lihat pesan di atas", "See the message above");
         };
     }
 
@@ -144,7 +144,7 @@ public class SetupService {
                         compressed.getOrDefault(e.getKey(), 0)))
                 .toList();
         String note = patterns.isEmpty()
-                ? "ID tidak ditemukan di folder yang dicari. Pastikan ID benar-benar terjadi di server ini, atau tambahkan folder lewat parameter roots"
+                ? Lang.t("ID tidak ditemukan di folder yang dicari. Pastikan ID benar-benar terjadi di server ini, atau tambahkan folder lewat parameter roots", "The ID was not found in the folders searched. Make sure it really happened on this server, or add folders with the roots parameter")
                 : null;
         return new DiscoverResult(patterns.isEmpty() ? SshSearcher.Status.KOSONG : SshSearcher.Status.OK, note, patterns, found,
                 hidden, unreadable, useRoots);
@@ -172,8 +172,8 @@ public class SetupService {
         }
         if (o.status() == SshSearcher.Status.KOSONG)
             return new CheckResult(SshSearcher.Status.KOSONG, 0, List.of(),
-                    countLines(o.note(), "Permission denied") > 0 ? "Folder atau file ada tetapi tidak boleh dibaca oleh akun ini"
-                            : "Tidak ada file yang cocok, atau semua file yang cocok masih kosong");
+                    countLines(o.note(), "Permission denied") > 0 ? Lang.t("Folder atau file ada tetapi tidak boleh dibaca oleh akun ini", "The folder or file exists but this account may not read it")
+                            : Lang.t("Tidak ada file yang cocok, atau semua file yang cocok masih kosong", "No matching files, or every matching file is still empty"));
         return new CheckResult(o.status(), 0, List.of(), o.note());
     }
 
@@ -185,7 +185,7 @@ public class SetupService {
         int n = Math.max(1, Math.min(lines, 50));
         SshSearcher.Outcome o = ssh.run(s, "head -q -n " + n + " " + path + " | head -n " + n, Duration.ofSeconds(props.timeoutSeconds()));
         if (o.status() != SshSearcher.Status.OK)
-            return new PreviewResult(o.status(), o.status() == SshSearcher.Status.KOSONG ? "File kosong atau tidak ditemukan" : o.note(),
+            return new PreviewResult(o.status(), o.status() == SshSearcher.Status.KOSONG ? Lang.t("File kosong atau tidak ditemukan", "File is empty or not found") : o.note(),
                     0, 0, 0, 0, false, null, Map.of(), List.of(), List.of(), Map.of(), null);
         LogParser.Detection d = LogParser.detect(o.stdout());
         Map<Masker.Kind, Integer> masked = new EnumMap<>(Masker.Kind.class);
@@ -204,9 +204,10 @@ public class SetupService {
         Map<String, Integer> formats = new LinkedHashMap<>();
         d.counts().forEach((k, v) -> formats.put(k.name(), v));
         String advice = ok ? null : d.recognized() == 0
-                ? "Format log ini belum dikenali, jadi pencarian akan menandainya sebagai \"format tidak dikenali\" dan bukan \"tidak ada\". "
-                  + "Format yang didukung: " + Arrays.stream(LogParser.Format.values()).map(LogParser.Format::label).toList()
-                : "Sebagian baris tidak dikenali. Cek contoh baris di bawah";
+                ? Lang.t("Format log ini belum dikenali, jadi pencarian akan menandainya sebagai \"format tidak dikenali\" dan bukan \"tidak ada\". ",
+                         "This log format is not recognized yet, so search will mark it as \"format not recognized\" rather than \"not found\". ")
+                  + Lang.t("Format yang didukung: ", "Supported formats: ") + Arrays.stream(LogParser.Format.values()).map(LogParser.Format::label).toList()
+                : Lang.t("Sebagian baris tidak dikenali. Cek contoh baris di bawah", "Some lines were not recognized. See the sample lines below");
         return new PreviewResult(SshSearcher.Status.OK, o.note(), d.lines(), d.recognized(), d.lines() - d.recognized(), percent, ok,
                 d.best() == null ? null : d.best().label(), formats, rows, samples, masked, advice);
     }
@@ -221,7 +222,7 @@ public class SetupService {
             Files.createDirectories(dir);
             Path priv = dir.resolve(file), pub = dir.resolve(file + ".pub");
             if (Files.exists(priv) && !force)
-                throw new ApiException(409, "Kunci untuk " + serverName + " sudah ada. Tambahkan ?force=true untuk membuat yang baru (kunci lama tidak berlaku lagi)");
+                throw new ApiException(409, Lang.en() ? "A key for " + serverName + " already exists. Add ?force=true to create a new one (the old key stops working)" : "Kunci untuk " + serverName + " sudah ada. Tambahkan ?force=true untuk membuat yang baru (kunci lama tidak berlaku lagi)");
             KeyPairGenerator g = KeyPairGenerator.getInstance("EC");
             g.initialize(256);
             KeyPair kp = g.generateKeyPair();
@@ -242,7 +243,7 @@ public class SetupService {
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {
-            throw new ApiException(500, "Kunci tidak bisa dibuat: " + e.getMessage());
+            throw new ApiException(500, Lang.t("Kunci tidak bisa dibuat: ", "The key could not be created: ") + e.getMessage());
         }
     }
 

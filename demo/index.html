@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="i18n.js"></script>
 <title>Log Scraper</title>
 <style>
   :root {
@@ -89,6 +90,14 @@
   @keyframes s { to { transform: rotate(360deg); } }
   textarea { width: 100%; height: 220px; font: 12px ui-monospace, monospace; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
   .hide { display: none !important; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 4px 0 10px; }
+  .filters select, .filters input { font-size: 13px; padding: 6px 8px; }
+  .filters input[type=search] { flex: 1 1 180px; font-size: 13px; }
+  .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
+  .pager button { padding: 4px 10px; font-size: 13px; }
+  .srvmore { grid-column: 1 / -1; justify-self: start; font-size: 13px; padding: 6px 12px; }
+  .quiet { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .quiet .stag { margin: 2px 2px 2px 0; }
   .tablewrap { overflow-x: auto; }
   @media (max-width: 640px) {
     .lane, .axis { grid-template-columns: 90px 1fr; }
@@ -108,7 +117,7 @@
 <body>
 <div class="demo-banner" id="demoBanner">Demo dengan data contoh: tidak ada server asli yang dihubungi. Coba ID <b>REQ-88231</b>, <b>REQ-88232</b> atau <b>REQ-88233</b>.</div>
 <div class="wrap">
-  <nav class="nav" aria-label="Menu utama"><a href="index.html" class="on" aria-current="page">Pencarian</a><a href="settings.html">Pengaturan server</a></nav>
+  <nav class="nav" aria-label="Menu utama"><a href="index.html" class="on" aria-current="page">Pencarian</a><a href="settings.html">Pengaturan</a></nav>
   <header>
     <h1>Log Scraper</h1>
     <p>Satu ID, semua server, satu timeline. Data pribadi disamarkan otomatis, tanpa instalasi apa pun di server.</p>
@@ -151,9 +160,25 @@
             <button type="button" id="viewServers" class="on">Per server</button>
             <button type="button" id="viewMerged">Satu timeline</button>
           </div>
-          <label class="note"><input type="checkbox" id="hideDebug"> Sembunyikan DEBUG</label>
           <button id="copy" type="button">Salin untuk tiket</button>
         </div>
+      </div>
+      <div class="filters" role="group" aria-label="Saring timeline">
+        <select id="fServer" aria-label="Saring server"><option value="">Semua server</option></select>
+        <select id="fLevel" aria-label="Saring level">
+          <option value="">Semua level</option>
+          <option value="ERROR">ERROR saja</option>
+          <option value="WARN">WARN dan ERROR</option>
+          <option value="NODEBUG">Tanpa DEBUG</option>
+        </select>
+        <input id="fText" type="search" placeholder="Saring isi pesan…" aria-label="Saring isi pesan" maxlength="100">
+        <select id="perPage" aria-label="Baris per halaman">
+          <option value="10">10 per halaman</option>
+          <option value="25">25 per halaman</option>
+          <option value="50">50 per halaman</option>
+          <option value="100">100 per halaman</option>
+        </select>
+        <button type="button" id="fReset" class="hide" style="padding:6px 10px;font-size:13px">Hapus saringan</button>
       </div>
       <div id="notes" class="note"></div>
       <div id="timeline"></div>
@@ -169,19 +194,25 @@
 <script>
 const $ = id => document.getElementById(id);
 const COLORS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
-const KIND = { NIK: 'NIK', KARTU: 'nomor kartu', TELEPON: 'nomor telepon', RAHASIA: 'rahasia (token, password, OTP)', EMAIL: 'email', NPWP: 'NPWP', REKENING: 'nomor akun', NAMA: 'nama', ALAMAT: 'alamat', TGL_LAHIR: 'tanggal lahir', KARTU_CVV: 'CVV kartu', IP: 'alamat IP', KUSTOM: 'data kustom' };
+const t = LS.t;
+const KIND = { NIK: 'NIK', KARTU: t('nomor kartu'), TELEPON: t('nomor telepon'), RAHASIA: t('rahasia (token, password, OTP)'), EMAIL: 'email', NPWP: 'NPWP', REKENING: t('nomor akun'), NAMA: t('nama'), ALAMAT: t('alamat'), TGL_LAHIR: t('tanggal lahir'), KARTU_CVV: t('CVV kartu'), IP: t('alamat IP'), KUSTOM: t('data kustom') };
 const STATUS = {
-  OK: ['✓', 'baris ditemukan'], KOSONG: ['–', 'tidak ada baris'], TIDAK_TERJANGKAU: ['✗', 'tidak terjangkau'],
-  LOGIN_GAGAL: ['✗', 'login gagal'], TIMEOUT: ['✗', 'timeout'], DITOLAK: ['✗', 'perintah ditolak'], ERROR: ['✗', 'error'],
-  KUNCI_BERUBAH: ['✗', 'kunci server berubah'], BELUM_DIATUR: ['!', 'folder log belum diatur'], FORMAT_TIDAK_DIKENALI: ['!', 'format log tidak dikenali']
+  OK: ['✓', t('baris ditemukan')], KOSONG: ['–', t('tidak ada baris')], TIDAK_TERJANGKAU: ['✗', t('tidak terjangkau')],
+  LOGIN_GAGAL: ['✗', t('login gagal')], TIMEOUT: ['✗', 'timeout'], DITOLAK: ['✗', t('perintah ditolak')], ERROR: ['✗', 'error'],
+  KUNCI_BERUBAH: ['✗', t('kunci server berubah')], BELUM_DIATUR: ['!', t('folder log belum diatur')], FORMAT_TIDAK_DIKENALI: ['!', t('format log tidak dikenali')]
 };
-let last = null, serverColor = {}, view = 'servers';
+let last = null, serverColor = {}, view = 'servers', showAllServers = false;
+const filt = { server: '', level: '', text: '' }, pages = {};
+let perPage = 10;
+try { const v = +window.localStorage.getItem('ls-perPage'); if ([10, 25, 50, 100].includes(v)) perPage = v; } catch (e) { /* storage blocked */ }
+const SERVER_CARDS = 8;   // more servers than this: show problems first and fold the rest
+const isProblem = s => !['OK', 'KOSONG'].includes(s.status);
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const markMasked = s => esc(s).replace(/[^\s"=:,]*\*{3,}[^\s"=:,]*/g, m => `<span class="masked" title="disamarkan">${m}</span>`);
+const markMasked = s => esc(s).replace(/[^\s"=:,]*\*{3,}[^\s"=:,]*/g, m => `<span class="masked" title="${t('disamarkan')}">${m}</span>`);
 const color = s => `var(${COLORS[(serverColor[s] ?? 0) % COLORS.length]})`;
 const toMs = t => new Date(t.replace(' ', 'T')).getTime();
-const fmtSec = ms => (ms / 1000).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtSec = ms => (ms / 1000).toLocaleString(LS.lang === 'en' ? 'en-US' : 'id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 function syncButtons() {
   const v = $('q').value.trim();
@@ -192,7 +223,7 @@ $('q').addEventListener('input', syncButtons);
 
 fetch('api/samples').then(r => r.ok ? r.json() : []).then(ids => {
   if (!ids.length) return;
-  $('samples').innerHTML = '<span class="note">Coba:</span>' +
+  $('samples').innerHTML = `<span class="note">${t('Coba:')}</span>` +
     ids.map(id => `<button type="button" class="chip" data-id="${esc(id)}">${esc(id)}</button>`).join('');
   $('samples').querySelectorAll('button').forEach(b => b.onclick = () => { $('q').value = b.dataset.id; search(); });
 }).catch(() => {});
@@ -203,7 +234,33 @@ $('reset').onclick = () => {
   ['out', 'err', 'loading'].forEach(id => $(id).classList.add('hide'));
   syncButtons(); $('q').focus();
 };
-$('hideDebug').onchange = () => last && renderRows(last);
+function refilter() {
+  filt.server = $('fServer').value; filt.level = $('fLevel').value; filt.text = $('fText').value.trim().toLowerCase();
+  Object.keys(pages).forEach(k => delete pages[k]);
+  $('fReset').classList.toggle('hide', !filt.server && !filt.level && !filt.text);
+  if (last) renderRows(last);
+}
+['fServer', 'fLevel'].forEach(id => $(id).onchange = refilter);
+$('fText').oninput = () => { clearTimeout(refilter.t); refilter.t = setTimeout(refilter, 200); };
+$('perPage').value = String(perPage);
+$('perPage').onchange = () => {
+  perPage = +$('perPage').value;
+  try { window.localStorage.setItem('ls-perPage', String(perPage)); } catch (e) { /* storage blocked */ }
+  refilter();
+};
+$('fReset').onclick = () => { $('fServer').value = ''; $('fLevel').value = ''; $('fText').value = ''; refilter(); };
+$('timeline').addEventListener('click', e => {
+  const b = e.target.closest('button[data-page]');
+  if (!b) return;
+  pages[b.dataset.key] = +b.dataset.page;
+  renderRows(last);
+  const block = document.getElementById('blk-' + b.dataset.key);
+  if (block && block.getBoundingClientRect().top < 0) block.scrollIntoView({ block: 'start' });
+});
+$('servers').addEventListener('click', e => {
+  if (!e.target.closest('.srvmore')) return;
+  showAllServers = !showAllServers; renderServers(last);
+});
 function setView(v) {
   view = v;
   $('viewServers').classList.toggle('on', v === 'servers');
@@ -215,21 +272,21 @@ $('viewMerged').onclick = () => setView('merged');
 
 async function search() {
   const q = $('q').value;
-  if (!q.trim()) { showError('Masukkan ID atau kata yang dicari.'); return; }
+  if (!q.trim()) { showError(t('Masukkan ID atau kata yang dicari.')); return; }
   $('err').classList.add('hide');
   $('go').disabled = true; $('go').innerHTML = '<span class="spin"></span>';
   $('loading').classList.remove('hide');
-  $('loading').innerHTML = '<span class="spin"></span> Menghubungi semua server lewat SSH read-only…';
+  $('loading').innerHTML = '<span class="spin"></span> ' + t('Menghubungi semua server lewat SSH read-only…');
   try {
     const res = await fetch(`api/search?q=${encodeURIComponent(q)}&hours=${$('hours').value}`);
-    const body = await res.json().catch(() => ({ error: 'Jawaban server tidak bisa dibaca.' }));
-    if (!res.ok) { showError(body.error || `Pencarian gagal (HTTP ${res.status}).`); return; }
+    const body = await res.json().catch(() => ({ error: t('Jawaban server tidak bisa dibaca.') }));
+    if (!res.ok) { showError(body.error || t('Pencarian gagal (HTTP {s}).', { s: res.status })); return; }
     last = body; $('q').value = body.query; render(body);
   } catch (e) {
-    showError('Log Scraper tidak bisa dihubungi. Cek apakah aplikasinya masih jalan.');
+    showError(t('Log Scraper tidak bisa dihubungi. Cek apakah aplikasinya masih jalan.'));
   } finally {
     $('loading').classList.add('hide');
-    $('go').textContent = 'Cari'; syncButtons();
+    $('go').textContent = t('Cari'); syncButtons();
   }
 }
 
@@ -242,28 +299,47 @@ function render(a) {
   serverColor = {}; a.servers.forEach((s, i) => serverColor[s.server] = i);
   $('out').classList.remove('hide');
 
-  $('servers').innerHTML = a.servers.map(s => {
+  showAllServers = false;
+  renderServers(a);
+  // a new search starts with no filters, and the server filter offers only servers that returned lines
+  $('fServer').innerHTML = `<option value="">${t('Semua server')}</option>` +
+    a.servers.filter(s => s.hits).map(s => `<option value="${esc(s.server)}">${esc(s.server)}${s.role ? ' · ' + esc(s.role) : ''} (${s.hits})</option>`).join('');
+  $('fLevel').value = ''; $('fText').value = '';
+  refilter.t && clearTimeout(refilter.t);
+  filt.server = ''; filt.level = ''; filt.text = ''; Object.keys(pages).forEach(k => delete pages[k]);
+  $('fReset').classList.add('hide');
+  renderRest(a);
+}
+
+function renderServers(a) {
+  const sorted = a.servers.length > SERVER_CARDS ? [...a.servers].sort((x, y) => isProblem(y) - isProblem(x) || y.hits - x.hits) : a.servers;
+  const shown = showAllServers || sorted.length <= SERVER_CARDS ? sorted : sorted.slice(0, SERVER_CARDS);
+  $('servers').innerHTML = shown.map(s => {
     const [icon, label] = STATUS[s.status] || ['?', s.status];
-    const down = !['OK', 'KOSONG'].includes(s.status);
+    const down = isProblem(s);
     return `<div class="srv ${s.status === 'OK' ? 'ok' : ''} ${down ? 'down' : ''}">
       <b><span class="stag" style="background:${color(s.server)}">${esc(s.server)}</span> ${esc(s.role || '')}</b>
       <div class="st">${icon} ${s.status === 'OK' ? s.hits + ' ' : ''}${label} · ${s.millis} ms</div>
       ${s.note ? `<small>${esc(s.note)}</small>` : ''}
-      ${down ? `<small><a href="settings.html#srv-${encodeURIComponent(s.server)}">Atur server</a></small>` : ''}</div>`;
-  }).join('');
+      ${down ? `<small><a href="${LS.href('settings.html')}#srv-${encodeURIComponent(s.server)}">${t('Atur server')}</a></small>` : ''}</div>`;
+  }).join('') + (sorted.length > SERVER_CARDS
+    ? `<button type="button" class="srvmore">${showAllServers ? t('Tampilkan lebih sedikit') : t('Tampilkan semua {n} server', { n: sorted.length })}</button>` : '');
+}
+
+function renderRest(a) {
 
   const d = a.diagnosis;
   const down = a.servers.filter(s => !['OK', 'KOSONG'].includes(s.status));
-  const tagText = { GAGAL: 'ADA ERROR', BERHASIL: 'SELESAI NORMAL', TIDAK_JELAS: a.total ? 'HASIL PENCARIAN' : 'TIDAK DITEMUKAN' }[d.verdict];
+  const tagText = { GAGAL: t('ADA ERROR'), BERHASIL: t('SELESAI NORMAL'), TIDAK_JELAS: a.total ? t('HASIL PENCARIAN') : t('TIDAK DITEMUKAN') }[d.verdict];
   let sugg = '';
   if (a.total === 0) {
     sugg = a.suggestions.length
-      ? `<div class="chips"><span class="note">Mungkin maksudnya:</span>${a.suggestions.map(s => `<button type="button" class="chip" data-id="${esc(s)}">${esc(s)}</button>`).join('')}</div>`
-      : `<p class="note">Coba perlebar rentang waktu, atau cek lagi ID-nya di tiket.</p>`;
+      ? `<div class="chips"><span class="note">${t('Mungkin maksudnya:')}</span>${a.suggestions.map(s => `<button type="button" class="chip" data-id="${esc(s)}">${esc(s)}</button>`).join('')}</div>`
+      : `<p class="note">${t('Coba perlebar rentang waktu, atau cek lagi ID-nya di tiket.')}</p>`;
   }
   $('verdict').className = `panel verdict ${d.verdict}`;
   $('verdict').innerHTML = `<span class="tag">${tagText}</span>
-    <h2>${a.total === 0 ? `Tidak ada log untuk "${esc(a.query)}" di ${a.servers.length - down.length} server yang terjangkau.` : esc(d.headline)}</h2>
+    <h2>${a.total === 0 ? t('Tidak ada log untuk "{q}" di {n} server yang terjangkau.', { q: esc(a.query), n: a.servers.length - down.length }) : esc(d.headline)}</h2>
     ${d.details.length && a.total ? `<ul>${d.details.map(x => `<li>${markMasked(x)}</li>`).join('')}</ul>` : ''}
     ${d.alert ? `<div class="alert">⚠ ${esc(d.alert)}</div>` : ''}
     ${serverNotice(a, down)}
@@ -273,10 +349,9 @@ function render(a) {
   const maskedTotal = Object.values(a.masked).reduce((x, y) => x + y, 0);
   const maskedList = Object.entries(a.masked).map(([k, v]) => `${v} ${KIND[k] || k}`).join(' · ');
   $('stats').innerHTML = `
-    <div class="stat"><div class="big">${fmtSec(a.millis)} detik</div><div class="lbl">Log Scraper, ${a.servers.length} server sekaligus.
-      Cara manual: ±${a.manualMinutes} menit (SSH dan grep satu per satu).</div></div>
-    <div class="stat"><div class="big">${a.total} baris</div><div class="lbl">digabung jadi satu timeline dari ${a.servers.filter(s => s.hits).length} server</div></div>
-    <div class="stat"><div class="big">${maskedTotal} data disamarkan</div><div class="lbl">${maskedTotal ? esc(maskedList) + '. Nomor referensi yang bukan NIK atau kartu tetap terbaca.' : 'Tidak ada data pribadi di hasil ini.'}</div></div>`;
+    <div class="stat"><div class="big">${fmtSec(a.millis)} ${t('detik')}</div><div class="lbl">${t('Log Scraper, {n} server sekaligus. Cara manual: ±{m} menit (SSH dan grep satu per satu).', { n: a.servers.length, m: a.manualMinutes })}</div></div>
+    <div class="stat"><div class="big">${a.total} ${t('baris')}</div><div class="lbl">${t('digabung jadi satu timeline dari {n} server', { n: a.servers.filter(s => s.hits).length })}</div></div>
+    <div class="stat"><div class="big">${t('{n} data disamarkan', { n: maskedTotal })}</div><div class="lbl">${maskedTotal ? esc(maskedList) + '. ' + t('Nomor referensi yang bukan NIK atau kartu tetap terbaca.') : t('Tidak ada data pribadi di hasil ini.')}</div></div>`;
 
   const empty = a.total === 0;
   $('stats').classList.toggle('hide', empty);
@@ -288,34 +363,54 @@ function render(a) {
 
 /** One notice that lists every server that was searched, and says for each server that has a problem what the problem is. */
 function serverNotice(a, down) {
-  if (!a.servers.length) return `<div class="alert">Belum ada server yang diatur, jadi tidak ada yang dicari. <a href="settings.html">Buka Pengaturan server</a> untuk menambahkan yang pertama.</div>`;
+  if (!a.servers.length) return `<div class="alert">${t('Belum ada server yang diatur, jadi tidak ada yang dicari.')} <a href="${LS.href('settings.html')}">${t('Buka Pengaturan')}</a> ${t('untuk menambahkan yang pertama.')}</div>`;
   const tag = n => `<span class="stag" style="background:${color(n)}">${esc(n)}</span>`;
   const line = s => {
     const [icon, label] = STATUS[s.status] || ['?', s.status];
     const bad = !['OK', 'KOSONG'].includes(s.status);
-    return `<li>${tag(s.server)} ${icon} ${s.status === 'OK' ? s.hits + ' baris' : esc(label)}${bad && s.note ? ': ' + esc(s.note) : ''}${bad ? ` <a href="settings.html#srv-${encodeURIComponent(s.server)}">Atur server</a>` : ''}</li>`;
+    return `<li>${tag(s.server)} ${icon} ${s.status === 'OK' ? s.hits + ' ' + t('baris') : esc(label)}${bad && s.note ? ': ' + esc(s.note) : ''}${bad ? ` <a href="${LS.href('settings.html')}#srv-${encodeURIComponent(s.server)}">${t('Atur server')}</a>` : ''}</li>`;
   };
   const heading = down.length
-    ? `Hasil mungkin tidak lengkap: ${down.length} dari ${a.servers.length} server bermasalah.`
-    : `Dicari di ${a.servers.length} server, semuanya menjawab.`;
+    ? t('Hasil mungkin tidak lengkap: {d} dari {n} server bermasalah.', { d: down.length, n: a.servers.length })
+    : t('Dicari di {n} server, semuanya menjawab.', { n: a.servers.length });
+  const many = a.servers.length > SERVER_CARDS;
+  const rest = many ? `<div>${t('{n} server lain menjawab normal.', { n: a.servers.length - down.length })}</div>` : '';
+  let items;
+  if (!many) items = a.servers.map(line);
+  else items = groupProblems(down).map(g => g.list.length === 1 ? line(g.list[0])
+    : `<li>${g.icon} ${esc(g.label)} (${g.list.length})${g.note ? ': ' + esc(g.note) : ''}<br>${g.list.map(x => `<a href="${LS.href('settings.html')}#srv-${encodeURIComponent(x.server)}" title="${t('Atur server')}">${tag(x.server)}</a>`).join(' ')}</li>`);
   return `<div class="alert ${down.length ? '' : 'calm'}">${heading}
-    <ul class="srvlist">${a.servers.map(line).join('')}</ul></div>`;
+    ${items.length ? `<ul class="srvlist">${items.join('')}</ul>` : ''}${rest}</div>`;
+}
+
+/** Servers with the same problem and the same message, together, so twenty unreachable servers take one line. */
+function groupProblems(list) {
+  const groups = new Map();
+  list.forEach(s => {
+    const [icon, label] = STATUS[s.status] || ['?', s.status];
+    const k = s.status + '\u0000' + (s.note || '');
+    if (!groups.has(k)) groups.set(k, { icon, label, note: s.note, list: [] });
+    groups.get(k).list.push(s);
+  });
+  return [...groups.values()];
 }
 
 function renderJourney(a) {
-  const t = a.timeline;
-  $('journeyPanel').classList.toggle('hide', t.length === 0);
-  if (!t.length) return;
-  const t0 = toMs(t[0].time), span = Math.max(1, toMs(t[t.length - 1].time) - t0);
-  const servers = a.servers.map(s => s.server);
+  const tl = a.timeline;
+  $('journeyPanel').classList.toggle('hide', tl.length === 0);
+  if (!tl.length) return;
+  const t0 = toMs(tl[0].time), span = Math.max(1, toMs(tl[tl.length - 1].time) - t0);
+  const servers = a.servers.map(s => s.server).filter(s => tl.some(e => e.server === s));
+  const skipped = a.servers.length - servers.length;
   $('journey').innerHTML = servers.map(s => {
     const role = a.servers.find(x => x.server === s).role || '';
-    const dots = t.filter(e => e.server === s).map(e => {
+    const dots = tl.filter(e => e.server === s).map(e => {
       const left = ((toMs(e.time) - t0) / span * 100).toFixed(2);
-      return `<span class="dot ${e.level}" style="left:${left}%;background:${color(s)}" title="+${fmtSec(toMs(e.time) - t0)} dtk · ${esc(e.level)} · ${esc(e.message.slice(0, 140))}"></span>`;
+      return `<span class="dot ${e.level}" style="left:${left}%;background:${color(s)}" title="+${fmtSec(toMs(e.time) - t0)} ${t('dtk')} · ${esc(e.level)} · ${esc(e.message.slice(0, 140))}"></span>`;
     }).join('');
     return `<div class="lane"><div class="name"><span class="stag" style="background:${color(s)}">${esc(s)}</span> <span class="hide-sm note">${esc(role)}</span></div><div class="track">${dots}</div></div>`;
-  }).join('') + `<div class="axis"><div></div><div><span>0 dtk</span><span>${fmtSec(span / 2)} dtk</span><span>${fmtSec(span)} dtk</span></div></div>`;
+  }).join('') + `<div class="axis"><div></div><div><span>0 ${t('dtk')}</span><span>${fmtSec(span / 2)} ${t('dtk')}</span><span>${fmtSec(span)} ${t('dtk')}</span></div></div>`
+    + (skipped ? `<p class="note">${t('{n} server tanpa baris tidak ditampilkan.', { n: skipped })}</p>` : '');
 }
 
 function rowHtml(e, t0, withServer) {
@@ -324,51 +419,86 @@ function rowHtml(e, t0, withServer) {
       <td class="hide-sm">+${fmtSec(toMs(e.time) - t0)}</td>
       ${withServer ? `<td><span class="stag" style="background:${color(e.server)}">${esc(e.server)}</span></td>` : ''}
       <td><span class="lvl ${e.level}">${esc(e.level)}</span></td>
-      <td class="msg">${markMasked(e.message)}${e.extra.length ? `<details><summary class="note">${e.extra.length} baris stack trace</summary><pre>${markMasked(e.extra.join('\n'))}</pre></details>` : ''}</td>
+      <td class="msg">${markMasked(e.message)}${e.extra.length ? `<details><summary class="note">${t('{n} baris stack trace', { n: e.extra.length })}</summary><pre>${markMasked(e.extra.join('\n'))}</pre></details>` : ''}</td>
     </tr>`;
 }
 
 function tableHtml(body, withServer, cols) {
-  return `<div class="tablewrap"><table><thead><tr><th>Waktu</th><th class="hide-sm">+detik</th>${withServer ? '<th>Server</th>' : ''}<th>Level</th><th>Pesan</th></tr></thead>
-    <tbody>${body || `<tr><td colspan="${cols}" class="note">Tidak ada baris.</td></tr>`}</tbody></table></div>`;
+  return `<div class="tablewrap"><table><thead><tr><th>${t('Waktu')}</th><th class="hide-sm">${t('+detik')}</th>${withServer ? '<th>Server</th>' : ''}<th>Level</th><th>${t('Pesan')}</th></tr></thead>
+    <tbody>${body || `<tr><td colspan="${cols}" class="note">${t('Tidak ada baris.')}</td></tr>`}</tbody></table></div>`;
+}
+
+function matches(e) {
+  if (filt.server && e.server !== filt.server) return false;
+  if (filt.level === 'ERROR' && e.level !== 'ERROR') return false;
+  if (filt.level === 'WARN' && !['WARN', 'ERROR'].includes(e.level)) return false;
+  if (filt.level === 'NODEBUG' && ['DEBUG', 'TRACE'].includes(e.level)) return false;
+  if (filt.text && !(e.message + '\n' + e.extra.join('\n')).toLowerCase().includes(filt.text)) return false;
+  return true;
+}
+
+/** One page of rows plus the controls to move between pages; key is 'all' or a server name. */
+function paged(key, rows) {
+  const count = Math.max(1, Math.ceil(rows.length / perPage));
+  const page = Math.min(Math.max(pages[key] || 0, 0), count - 1);
+  pages[key] = page;
+  const slice = rows.slice(page * perPage, (page + 1) * perPage);
+  const btn = (p, label, off) => `<button type="button" data-key="${esc(key)}" data-page="${p}" ${off ? 'disabled' : ''}>${label}</button>`;
+  const pager = count < 2 ? '' : `<div class="pager">
+      <span class="note">${t('{a}–{b} dari {n} baris', { a: page * perPage + 1, b: page * perPage + slice.length, n: rows.length })}</span>
+      ${btn(0, '«', page === 0)}${btn(page - 1, '‹ ' + t('Sebelumnya'), page === 0)}
+      <span>${t('Halaman {p} dari {n}', { p: page + 1, n: count })}</span>
+      ${btn(page + 1, t('Berikutnya') + ' ›', page >= count - 1)}${btn(count - 1, '»', page >= count - 1)}</div>`;
+  return { slice, pager };
 }
 
 function renderRows(a) {
-  const hide = $('hideDebug').checked;
-  const t = a.timeline, t0 = t.length ? toMs(t[0].time) : 0;
-  const rows = t.filter(e => !(hide && e.level === 'DEBUG'));
-  $('tlTitle').textContent = `Timeline (${rows.length} baris)`;
+  const tl = a.timeline, t0 = tl.length ? toMs(tl[0].time) : 0;
+  const rows = tl.filter(matches);
+  const filtered = rows.length !== tl.length;
+  $('tlTitle').textContent = filtered ? t('Timeline ({n} dari {m} baris)', { n: rows.length, m: tl.length }) : t('Timeline ({n} baris)', { n: rows.length });
   $('notes').innerHTML = a.notes.map(esc).join(' ');
-  if (view === 'merged') {
-    $('timeline').innerHTML = tableHtml(rows.map(e => rowHtml(e, t0, true)).join(''), true, 5);
+  if (view === 'merged' || filt.server) {
+    const p = paged('all', rows);
+    $('timeline').innerHTML = `<div id="blk-all">${tableHtml(p.slice.map(e => rowHtml(e, t0, !filt.server)).join(''), !filt.server, filt.server ? 4 : 5)}${p.pager}</div>`;
     return;
   }
-  // one block per server, in the order they are configured, so a server with no lines still says why
-  $('timeline').innerHTML = a.servers.map(s => {
+  // one block per server that has lines or a problem; quiet servers are listed together so many servers stay short
+  const blocks = [], quiet = [], troubled = [];
+  a.servers.forEach(s => {
     const [icon, label] = STATUS[s.status] || ['?', s.status];
     const own = rows.filter(e => e.server === s.server);
+    if (!own.length && !isProblem(s)) { quiet.push(s); return; }
+    if (!own.length && !(s.unrecognizedSamples || []).length && a.servers.length > SERVER_CARDS) { troubled.push(s); return; }
     const head = `<div class="srvhead"><span class="stag" style="background:${color(s.server)}">${esc(s.server)}</span>
       <b>${esc(s.role || '')}</b>
-      <span class="note">${icon} ${s.status === 'OK' ? s.hits + ' baris' : label} · ${s.millis} ms</span></div>`;
+      <span class="note">${icon} ${s.status === 'OK' ? s.hits + ' ' + t('baris') : label} · ${s.millis} ms</span></div>`;
     let body;
-    if (own.length) body = tableHtml(own.map(e => rowHtml(e, t0, false)).join(''), false, 4);
-    else {
+    if (own.length) {
+      const p = paged(s.server, own);
+      body = tableHtml(p.slice.map(e => rowHtml(e, t0, false)).join(''), false, 4) + p.pager;
+    } else {
       const samples = s.unrecognizedSamples || [];
       body = `<p class="note">${esc(label)}${s.note ? ' · ' + esc(s.note) : ''}</p>` +
-        (samples.length ? `<details open><summary class="note">Contoh baris yang tidak dikenali (data pribadi sudah disamarkan)</summary><pre>${markMasked(samples.join('\n'))}</pre></details>` : '');
+        (samples.length ? `<details open><summary class="note">${t('Contoh baris yang tidak dikenali (data pribadi sudah disamarkan)')}</summary><pre>${markMasked(samples.join('\n'))}</pre></details>` : '');
     }
-    return `<section class="srvblock">${head}${body}</section>`;
-  }).join('');
+    blocks.push(`<section class="srvblock" id="blk-${esc(s.server)}">${head}${body}</section>`);
+  });
+  const quietHtml = quiet.length ? `<div class="quiet note">${filtered ? t('Tidak ada baris yang cocok di:') : t('Tidak ada baris di:')}
+      ${quiet.map(s => `<span class="stag" style="background:${color(s.server)}" title="${esc(s.role || '')}">${esc(s.server)}</span>`).join(' ')}</div>` : '';
+  const troubledHtml = groupProblems(troubled).map(g => `<div class="quiet note">${g.icon} ${esc(g.label)} (${g.list.length})${g.note ? ': ' + esc(g.note) : ''}<br>
+      ${g.list.map(s => `<a href="${LS.href('settings.html')}#srv-${encodeURIComponent(s.server)}" title="${t('Atur server')}"><span class="stag" style="background:${color(s.server)}">${esc(s.server)}</span></a>`).join(' ')}</div>`).join('');
+  $('timeline').innerHTML = (blocks.join('') || `<p class="note">${t('Tidak ada baris yang cocok dengan saringan.')}</p>`) + troubledHtml + quietHtml;
 }
 
 function ticketText(a) {
   const d = a.diagnosis, lines = [];
-  lines.push(`[Log Scraper] ${a.query}  (${a.from.replace('T', ' ').slice(0, 16)} s/d ${a.to.replace('T', ' ').slice(0, 16)})`);
-  lines.push(`Hasil: ${d.headline}`);
-  if (d.alert) lines.push(`PERHATIAN: ${d.alert}`);
+  lines.push(`[Log Scraper] ${a.query}  (${a.from.replace('T', ' ').slice(0, 16)} ${t('s/d')} ${a.to.replace('T', ' ').slice(0, 16)})`);
+  lines.push(`${t('Hasil:')} ${d.headline}`);
+  if (d.alert) lines.push(`${t('PERHATIAN:')} ${d.alert}`);
   d.details.forEach(x => lines.push(`- ${x}`));
-  lines.push(`Server yang dicari (${a.servers.length}):`);
-  a.servers.forEach(s => lines.push(`- ${s.server}${s.role ? ' (' + s.role + ')' : ''}: ${s.status === 'OK' ? s.hits + ' baris' : (STATUS[s.status] || ['', s.status])[1]}${s.note ? ' - ' + s.note : ''}`));
+  lines.push(t('Server yang dicari ({n}):', { n: a.servers.length }));
+  a.servers.forEach(s => lines.push(`- ${s.server}${s.role ? ' (' + s.role + ')' : ''}: ${s.status === 'OK' ? s.hits + ' ' + t('baris') : (STATUS[s.status] || ['', s.status])[1]}${s.note ? ' - ' + s.note : ''}`));
   const put = (e, withServer) => {
     lines.push(`${e.time} ${withServer ? e.server + ' ' : ''}${e.level.padEnd(5)} ${e.message}`);
     e.extra.slice(0, 6).forEach(x => lines.push('    ' + x));
@@ -377,10 +507,10 @@ function ticketText(a) {
   else a.servers.forEach(s => {
     lines.push('', `== ${s.server}${s.role ? ' (' + s.role + ')' : ''} ==`);
     const own = a.timeline.filter(e => e.server === s.server);
-    if (!own.length) lines.push('(tidak ada baris)');
+    if (!own.length) lines.push(t('(tidak ada baris)'));
     own.forEach(e => put(e, false));
   });
-  lines.push('', 'Data pribadi sudah disamarkan otomatis.');
+  lines.push('', t('Data pribadi sudah disamarkan otomatis.'));
   return lines.join('\n');
 }
 
@@ -389,8 +519,8 @@ $('copy').onclick = async () => {
   const text = ticketText(last);
   try {
     await navigator.clipboard.writeText(text);
-    $('copy').textContent = 'Tersalin ✓';
-    setTimeout(() => $('copy').textContent = 'Salin untuk tiket', 1600);
+    $('copy').textContent = t('Tersalin ✓');
+    setTimeout(() => $('copy').textContent = t('Salin untuk tiket'), 1600);
   } catch {
     $('copyText').value = text; $('copyBox').classList.remove('hide');
     $('copyText').focus(); $('copyText').select();

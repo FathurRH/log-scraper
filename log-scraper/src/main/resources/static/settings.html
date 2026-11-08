@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pengaturan server · Log Scraper</title>
+<script src="i18n.js"></script>
+<title>Pengaturan · Log Scraper</title>
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #e3e6ea;
@@ -49,6 +50,12 @@
   .server { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
   .server .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
   .server .name { font-weight: 700; font-size: 16px; }
+  .listbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .listbar input { flex: 1 1 240px; width: auto; }
+  .listbar select { width: auto; }
+  .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+  .server.closed { padding: 10px 12px; }
+  .summary { margin-top: 4px; }
   .paths { list-style: none; padding: 0; margin: 6px 0; }
   .paths li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line); }
   .paths code { flex: 1 1 260px; word-break: break-all; }
@@ -72,13 +79,15 @@
   @media (max-width: 700px) { .rule { grid-template-columns: 1fr 1fr; } }
   .hide { display: none !important; }
   .masked { background: #f1ebfb; color: #6f42c1; border-radius: 3px; padding: 0 2px; }
+  .langopt { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; cursor: pointer; white-space: nowrap; }
+  .langopt input { width: auto; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <nav class="nav" aria-label="Menu utama"><a href="./">Pencarian</a><a href="settings.html" class="on" aria-current="page">Pengaturan server</a></nav>
+  <nav class="nav" aria-label="Menu utama"><a href="./">Pencarian</a><a href="settings.html" class="on" aria-current="page">Pengaturan</a></nav>
   <header>
-    <h1>Pengaturan server</h1>
+    <h1>Pengaturan</h1>
     <p>Hubungkan server, tentukan folder lognya, dan cek formatnya. Password hanya bisa ditulis, tidak pernah ditampilkan lagi.</p>
   </header>
 
@@ -97,7 +106,18 @@
         <h2 id="listTitle">Server</h2>
         <button class="primary" id="addBtn" type="button">+ Tambah server</button>
       </div>
+      <div class="listbar hide" id="listBar">
+        <input id="srvFilter" type="search" placeholder="Cari server: nama, peran atau host" aria-label="Cari server" maxlength="60">
+        <select id="srvState" aria-label="Saring server">
+          <option value="">Semua server</option>
+          <option value="nofolder">Folder log belum diatur</option>
+          <option value="nopin">Identitas belum dikunci</option>
+          <option value="bad">Tes koneksi gagal</option>
+        </select>
+      </div>
+      <p class="note hide" id="listCount"></p>
       <div id="servers"></div>
+      <div id="srvPager"></div>
       <p class="note" id="empty">Belum ada server. Tambahkan yang pertama.</p>
     </div>
 
@@ -143,6 +163,15 @@
       <pre id="maskOut" class="hide" style="white-space:pre-wrap;margin:8px 0 0"></pre>
     </div>
   </div>
+
+  <div class="panel" id="langPanel">
+    <h2>Bahasa</h2>
+    <p class="note">Bahasa tampilan Log Scraper di browser ini, termasuk pesan dari server. Log asli tidak diterjemahkan.</p>
+    <div class="row" role="radiogroup" aria-label="Bahasa">
+      <label class="langopt"><input type="radio" name="lang" value="id"> Bahasa Indonesia</label>
+      <label class="langopt"><input type="radio" name="lang" value="en"> English</label>
+    </div>
+  </div>
 </div>
 <div id="toast" class="toast hide" role="status"></div>
 
@@ -150,8 +179,12 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const markMasked = s => esc(s).replace(/[^\s"=:,]*\*{3,}[^\s"=:,]*/g, m => `<span class="masked">${m}</span>`);
+const t = LS.t;
 const STATUS = { OK: 'ok', KOSONG: 'warn', TIDAK_TERJANGKAU: 'bad', LOGIN_GAGAL: 'bad', TIMEOUT: 'bad', DITOLAK: 'bad', KUNCI_BERUBAH: 'bad', ERROR: 'bad' };
 let servers = [], editing = null, busy = new Set();
+const opened = new Set();   // server cards the user expanded
+let srvPage = 0;
+const SRV_PER_PAGE = 10, COLLAPSE_FROM = 6, FILTER_FROM = 6;
 const view = {};   // per server: what the last test, discovery, check or preview showed
 
 function toast(msg, bad) {
@@ -165,8 +198,8 @@ async function api(method, path, body) {
   if (tok) headers['X-Setup-Token'] = tok;
   const res = await fetch('api/setup' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) { showToken(); throw new Error(data.error || 'Token admin diperlukan'); }
-  if (!res.ok) throw new Error(data.error || `Gagal (HTTP ${res.status})`);
+  if (res.status === 401) { showToken(); throw new Error(data.error || t('Token admin diperlukan')); }
+  if (!res.ok) throw new Error(data.error || t('Gagal (HTTP {s})', { s: res.status }));
   return data;
 }
 
@@ -184,16 +217,36 @@ async function load() {
 
 function login(s) {
   const parts = [];
-  if (s.hasPassword) parts.push('password tersimpan');
-  if (s.keyFile) parts.push('kunci SSH');
-  return parts.join(' + ') || 'belum ada password atau kunci';
+  if (s.hasPassword) parts.push(t('password tersimpan'));
+  if (s.keyFile) parts.push(t('kunci SSH'));
+  return parts.join(' + ') || t('belum ada password atau kunci');
 }
 
 function render() {
-  $('listTitle').textContent = `Server (${servers.length})`;
+  $('listTitle').textContent = t('Server ({n})', { n: servers.length });
   $('empty').classList.toggle('hide', servers.length > 0);
-  $('servers').innerHTML = servers.map(card).join('');
-  if (!render.jumped && location.hash.startsWith('#srv-')) {   // arriving from a problem on the search page
+  $('listBar').classList.toggle('hide', servers.length < FILTER_FROM);
+  const target = !render.jumped && location.hash.startsWith('#srv-') ? decodeURIComponent(location.hash.slice(5)) : null;
+  if (target) opened.add(target);
+  const q = $('srvFilter').value.trim().toLowerCase(), st = $('srvState').value;
+  const list = servers.filter(x => {
+    if (q && ![x.name, x.role, x.host, x.username].some(v => String(v || '').toLowerCase().includes(q))) return false;
+    if (st === 'nofolder' && x.logPaths.length) return false;
+    if (st === 'nopin' && x.hostKeyFingerprint) return false;
+    if (st === 'bad' && !(view[x.name] && view[x.name].test && !view[x.name].test.ok)) return false;
+    return true;
+  });
+  const pageCount = Math.max(1, Math.ceil(list.length / SRV_PER_PAGE));
+  if (target) srvPage = Math.max(0, Math.floor(list.findIndex(x => x.name === target) / SRV_PER_PAGE));
+  srvPage = Math.min(Math.max(srvPage, 0), pageCount - 1);
+  const shown = list.slice(srvPage * SRV_PER_PAGE, (srvPage + 1) * SRV_PER_PAGE);
+  $('listCount').classList.toggle('hide', list.length === servers.length || !servers.length);
+  $('listCount').textContent = t('Menampilkan {n} dari {m} server.', { n: list.length, m: servers.length });
+  $('servers').innerHTML = shown.map(card).join('') || (servers.length ? `<p class="note">${t('Tidak ada server yang cocok dengan saringan.')}</p>` : '');
+  const pb = (p, label, off) => `<button type="button" class="small" data-srvpage="${p}" ${off ? 'disabled' : ''}>${label}</button>`;
+  $('srvPager').innerHTML = pageCount < 2 ? '' : `<div class="pager">${pb(srvPage - 1, '‹ ' + t('Sebelumnya'), srvPage === 0)}
+    <span>${t('Halaman {p} dari {n}', { p: srvPage + 1, n: pageCount })}</span>${pb(srvPage + 1, t('Berikutnya') + ' ›', srvPage >= pageCount - 1)}</div>`;
+  if (target) {   // arriving from a problem on the search page
     render.jumped = true;
     const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
     if (el) { el.scrollIntoView({ block: 'start' }); el.style.outline = '2px solid var(--accent)'; }
@@ -203,60 +256,64 @@ function render() {
 function card(s) {
   const v = view[s.name] || {};
   const n = esc(s.name), isBusy = busy.has(s.name);
+  const open = servers.length < COLLAPSE_FROM || opened.has(s.name) || isBusy;
   const paths = s.logPaths.length
     ? `<ul class="paths">${s.logPaths.map((p, i) => `<li><code>${esc(p)}</code>
-        <button class="small" data-act="check" data-name="${n}" data-i="${i}">Cek</button>
-        <button class="small" data-act="preview" data-name="${n}" data-i="${i}">Lihat format</button>
-        <button class="small danger" data-act="rmpath" data-name="${n}" data-i="${i}">Hapus</button></li>`).join('')}</ul>`
-    : `<p class="note">Folder log belum diatur. Cari dari sebuah ID di bawah, atau tambahkan sendiri.</p>`;
-  return `<div class="server" id="srv-${n}">
+        <button class="small" data-act="check" data-name="${n}" data-i="${i}">${t('Cek')}</button>
+        <button class="small" data-act="preview" data-name="${n}" data-i="${i}">${t('Lihat format')}</button>
+        <button class="small danger" data-act="rmpath" data-name="${n}" data-i="${i}">${t('Hapus')}</button></li>`).join('')}</ul>`
+    : `<p class="note">${t('Folder log belum diatur. Cari dari sebuah ID di bawah, atau tambahkan sendiri.')}</p>`;
+  return `<div class="server${open ? '' : ' closed'}" id="srv-${n}">
     <div class="head">
       <div><span class="name">${n}</span> <span class="note">${esc(s.role || '')}</span><br>
         <span class="note">${esc(s.username)}@${esc(s.host)}:${s.port} · ${esc(login(s))} ·
-        ${s.hostKeyFingerprint ? '<span class="tag ok">identitas server dikunci</span>' : '<span class="tag warn">identitas server belum dikunci</span>'}</span></div>
+        ${s.hostKeyFingerprint ? `<span class="tag ok">${t('identitas server dikunci')}</span>` : `<span class="tag warn">${t('identitas server belum dikunci')}</span>`}</span></div>
       <div class="row">
-        <button class="primary small" data-act="test" data-name="${n}" ${isBusy ? 'disabled' : ''}>Tes koneksi</button>
-        <button class="small" data-act="key" data-name="${n}">Buat kunci SSH</button>
-        <button class="small" data-act="edit" data-name="${n}">Ubah</button>
-        <button class="small danger" data-act="delete" data-name="${n}">Hapus</button>
+        <button class="primary small" data-act="test" data-name="${n}" ${isBusy ? 'disabled' : ''}>${t('Tes koneksi')}</button>
+        <button class="small" data-act="key" data-name="${n}">${t('Buat kunci SSH')}</button>
+        <button class="small" data-act="edit" data-name="${n}">${t('Ubah')}</button>
+        <button class="small danger" data-act="delete" data-name="${n}">${t('Hapus')}</button>
+        ${servers.length < COLLAPSE_FROM ? '' : `<button class="small" data-act="toggle" data-name="${n}" aria-expanded="${open}">${open ? t('Tutup') + ' ▴' : t('Detail') + ' ▾'}</button>`}
       </div>
     </div>
+    ${open ? '' : `<div class="note summary">${t('{n} folder log', { n: s.logPaths.length })}${v.test ? ' · ' + (v.test.ok ? t('Koneksi berhasil') : t('Koneksi belum berhasil')) : ''}</div></div>`}
+    ${open ? `
     ${v.test ? testHtml(s, v.test) : ''}
     ${v.key ? keyHtml(v.key) : ''}
-    <h3>Folder log</h3>
+    <h3>${t('Folder log')}</h3>
     ${paths}
     <div class="row">
       <input data-newpath="${n}" placeholder="/opt/app/logs/app*.log" style="flex:1 1 280px;width:auto">
-      <button class="small" data-act="addpath" data-name="${n}">Tambah</button>
+      <button class="small" data-act="addpath" data-name="${n}">${t('Tambah')}</button>
     </div>
     ${v.check ? checkHtml(v.check) : ''}
     ${v.preview ? previewHtml(v.preview) : ''}
-    <h3>Cari folder log dari sebuah ID</h3>
+    <h3>${t('Cari folder log dari sebuah ID')}</h3>
     <div class="row">
-      <input data-id="${n}" placeholder="ID request yang terjadi hari ini, contoh REQ-88231" style="flex:1 1 280px;width:auto" maxlength="80">
-      <button class="small" data-act="discover" data-name="${n}" ${isBusy ? 'disabled' : ''}>Cari folder</button>
+      <input data-id="${n}" placeholder="${t('ID request yang terjadi hari ini, contoh REQ-88231')}" style="flex:1 1 280px;width:auto" maxlength="80">
+      <button class="small" data-act="discover" data-name="${n}" ${isBusy ? 'disabled' : ''}>${t('Cari folder')}</button>
     </div>
-    ${v.discover ? discoverHtml(s, v.discover) : '<p class="note">Log Scraper mencari ID itu di folder umum dan menunjukkan file mana yang memuatnya.</p>'}
-  </div>`;
+    ${v.discover ? discoverHtml(s, v.discover) : `<p class="note">${t('Log Scraper mencari ID itu di folder umum dan menunjukkan file mana yang memuatnya.')}</p>`}
+  </div>` : ''}`;
 }
 
 function testHtml(s, r) {
   const steps = r.steps.map(x => `<li>${x.ok ? '✓' : '✗'} <b>${esc(x.step)}</b>: ${esc(x.detail)}</li>`).join('');
   const pin = r.fingerprint && !s.hostKeyFingerprint
-    ? `<div class="row"><button class="small" data-act="pin" data-name="${esc(s.name)}" data-fp="${esc(r.fingerprint)}">Kunci identitas server ini</button>
-       <span class="note">Cocokkan dulu ${esc(r.fingerprint)} dengan yang diberikan tim server. Setelah dikunci, server dengan kunci lain ditolak.</span></div>` : '';
-  return `<div class="result ${r.ok ? 'ok' : 'bad'}"><b>${r.ok ? 'Koneksi berhasil' : 'Koneksi belum berhasil'}</b>
+    ? `<div class="row"><button class="small" data-act="pin" data-name="${esc(s.name)}" data-fp="${esc(r.fingerprint)}">${t('Kunci identitas server ini')}</button>
+       <span class="note">${t('Cocokkan dulu {fp} dengan yang diberikan tim server. Setelah dikunci, server dengan kunci lain ditolak.', { fp: esc(r.fingerprint) })}</span></div>` : '';
+  return `<div class="result ${r.ok ? 'ok' : 'bad'}"><b>${r.ok ? t('Koneksi berhasil') : t('Koneksi belum berhasil')}</b>
     <ul class="steps">${steps}</ul>${r.hint ? `<div class="note">${esc(r.hint)}</div>` : ''}${pin}</div>`;
 }
 
 function keyHtml(k) {
-  return `<div class="result"><b>Kunci SSH dibuat.</b> Kunci pribadi tetap di Log Scraper. Minta tim server menjalankan ini sebagai akun read-only:
+  return `<div class="result"><b>${t('Kunci SSH dibuat.')}</b> ${t('Kunci pribadi tetap di Log Scraper. Minta tim server menjalankan ini sebagai akun read-only:')}
     <pre>${esc(k.installCommand)}</pre>
-    <button class="small" data-act="copy" data-text="${esc(k.installCommand)}">Salin perintah</button></div>`;
+    <button class="small" data-act="copy" data-text="${esc(k.installCommand)}">${t('Salin perintah')}</button></div>`;
 }
 
 function checkHtml(r) {
-  return `<div class="result ${r.count ? 'ok' : 'bad'}">${r.count ? `Cocok dengan ${r.count} file` : 'Tidak ada file yang cocok'}${r.note ? ' · ' + esc(r.note) : ''}
+  return `<div class="result ${r.count ? 'ok' : 'bad'}">${r.count ? t('Cocok dengan {n} file', { n: r.count }) : t('Tidak ada file yang cocok')}${r.note ? ' · ' + esc(r.note) : ''}
     ${r.files.length ? '<pre>' + r.files.map(esc).join('\n') + '</pre>' : ''}</div>`;
 }
 
@@ -264,22 +321,22 @@ function previewHtml(r) {
   if (r.status !== 'OK') return `<div class="result bad">${esc(r.note || r.status)}</div>`;
   const rows = r.rows.slice(0, 8).map(x => `<tr><td>${esc(x.time.slice(11))}</td><td>${esc(x.level)}</td><td>${markMasked(x.message)}</td></tr>`).join('');
   const masked = Object.entries(r.masked || {}).map(([k, v]) => `${v} ${esc(k)}`).join(', ');
-  return `<div class="result ${r.ok ? 'ok' : 'bad'}"><b>${r.recognized} dari ${r.lines} baris terbaca (${r.percent}%)</b>${r.format ? ' · format: ' + esc(r.format) : ''}
+  return `<div class="result ${r.ok ? 'ok' : 'bad'}"><b>${t('{r} dari {n} baris terbaca ({p}%)', { r: r.recognized, n: r.lines, p: r.percent })}</b>${r.format ? ' · format: ' + esc(r.format) : ''}
     ${r.advice ? `<div class="note">${esc(r.advice)}</div>` : ''}
-    ${rows ? `<table><thead><tr><th>Waktu</th><th>Level</th><th>Pesan</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
-    ${r.unrecognizedSamples.length ? `<div class="note">Contoh baris yang tidak dikenali:</div><pre>${r.unrecognizedSamples.map(markMasked).join('\n')}</pre>` : ''}
-    ${masked ? `<div class="note">Disamarkan di pratinjau: ${masked}</div>` : ''}</div>`;
+    ${rows ? `<table><thead><tr><th>${t('Waktu')}</th><th>Level</th><th>${t('Pesan')}</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+    ${r.unrecognizedSamples.length ? `<div class="note">${t('Contoh baris yang tidak dikenali:')}</div><pre>${r.unrecognizedSamples.map(markMasked).join('\n')}</pre>` : ''}
+    ${masked ? `<div class="note">${t('Disamarkan di pratinjau:')} ${masked}</div>` : ''}</div>`;
 }
 
 function discoverHtml(s, r) {
   if (r.status !== 'OK' && r.status !== 'KOSONG') return `<div class="result bad">${esc(r.status)}: ${esc(r.note || '')}</div>`;
-  if (!r.patterns.length) return `<div class="result bad">${esc(r.note || 'Tidak ada hasil.')}</div>`;
+  if (!r.patterns.length) return `<div class="result bad">${esc(r.note || t('Tidak ada hasil.'))}</div>`;
   const rows = r.patterns.map((p, i) => `<li><code>${esc(p.pattern)}</code>
-      <span class="note">${p.files} file${p.compressedRotated ? ', ' + p.compressedRotated + ' file .gz (belum dicari)' : ''}</span>
-      ${s.logPaths.includes(p.pattern) ? '<span class="tag ok">sudah dipakai</span>' : `<button class="small primary" data-act="usepattern" data-name="${esc(s.name)}" data-i="${i}">Pakai</button>`}</li>`).join('');
-  return `<div class="result ok"><b>Ditemukan ${r.patterns.length} lokasi log</b>
+      <span class="note">${p.files} file${p.compressedRotated ? ', ' + t('{n} file .gz (belum dicari)', { n: p.compressedRotated }) : ''}</span>
+      ${s.logPaths.includes(p.pattern) ? `<span class="tag ok">${t('sudah dipakai')}</span>` : `<button class="small primary" data-act="usepattern" data-name="${esc(s.name)}" data-i="${i}">${t('Pakai')}</button>`}</li>`).join('');
+  return `<div class="result ok"><b>${t('Ditemukan {n} lokasi log', { n: r.patterns.length })}</b>
     <ul class="paths">${rows}</ul>
-    <div class="note">${r.hiddenSystemLogs ? r.hiddenSystemLogs + ' log sistem disembunyikan. ' : ''}${r.unreadableFolders ? r.unreadableFolders + ' folder tidak boleh dibaca akun ini. ' : ''}</div></div>`;
+    <div class="note">${r.hiddenSystemLogs ? t('{n} log sistem disembunyikan.', { n: r.hiddenSystemLogs }) + ' ' : ''}${r.unreadableFolders ? t('{n} folder tidak boleh dibaca akun ini.', { n: r.unreadableFolders }) + ' ' : ''}</div></div>`;
 }
 
 async function run(name, fn) {
@@ -299,25 +356,27 @@ document.addEventListener('click', async e => {
   const name = b.dataset.name, act = b.dataset.act, s = servers.find(x => x.name === name);
   const enc = encodeURIComponent(name);
   view[name] = view[name] || {};
-  if (act === 'copy') { try { await navigator.clipboard.writeText(b.dataset.text); toast('Tersalin'); } catch { toast('Clipboard diblokir browser. Salin manual.', true); } return; }
+  if (act === 'copy') { try { await navigator.clipboard.writeText(b.dataset.text); toast(t('Tersalin')); } catch { toast(t('Clipboard diblokir browser. Salin manual.'), true); } return; }
   if (act === 'edit') return openForm(s);
+  if (!['toggle', 'delete', 'copy', 'edit'].includes(act)) opened.add(name);
+  if (act === 'toggle') { if (opened.has(name)) opened.delete(name); else opened.add(name); return render(); }
   if (act === 'delete') {
-    if (!confirm(`Hapus server ${name} dari Log Scraper? Server itu sendiri tidak diubah.`)) return;
-    return run(name, async () => { await api('DELETE', '/servers/' + enc); servers = servers.filter(x => x.name !== name); delete view[name]; toast('Server dihapus'); });
+    if (!confirm(t('Hapus server {n} dari Log Scraper? Server itu sendiri tidak diubah.', { n: name }))) return;
+    return run(name, async () => { await api('DELETE', '/servers/' + enc); servers = servers.filter(x => x.name !== name); delete view[name]; toast(t('Server dihapus')); });
   }
   if (act === 'test') return run(name, async () => { view[name].test = await api('POST', `/servers/${enc}/test`); });
   if (act === 'key') return run(name, async () => {
     let force = false;
-    if (s.keyFile && !confirm('Server ini sudah punya kunci. Buat yang baru? Kunci lama tidak berlaku lagi.')) return;
+    if (s.keyFile && !confirm(t('Server ini sudah punya kunci. Buat yang baru? Kunci lama tidak berlaku lagi.'))) return;
     force = !!s.keyFile;
     view[name].key = await api('POST', `/servers/${enc}/key?force=${force}`);
     servers = await api('GET', '/servers');
   });
-  if (act === 'pin') return run(name, async () => { await saveServer(name, { hostKeyFingerprint: b.dataset.fp }); toast('Identitas server dikunci'); });
+  if (act === 'pin') return run(name, async () => { await saveServer(name, { hostKeyFingerprint: b.dataset.fp }); toast(t('Identitas server dikunci')); });
   if (act === 'addpath') {
     const input = document.querySelector(`input[data-newpath="${CSS.escape(name)}"]`), p = input.value.trim();
     if (!p) return;
-    return run(name, async () => { await saveServer(name, { logPaths: [...s.logPaths, p] }); toast('Folder log disimpan'); });
+    return run(name, async () => { await saveServer(name, { logPaths: [...s.logPaths, p] }); toast(t('Folder log disimpan')); });
   }
   if (act === 'rmpath') return run(name, async () => { await saveServer(name, { logPaths: s.logPaths.filter((_, i) => i !== +b.dataset.i) }); delete view[name].check; delete view[name].preview; });
   if (act === 'check') return run(name, async () => { delete view[name].preview; view[name].check = await api('POST', `/servers/${enc}/check`, { path: s.logPaths[+b.dataset.i] }); });
@@ -329,27 +388,30 @@ document.addEventListener('click', async e => {
   });
   if (act === 'discover') {
     const id = document.querySelector(`input[data-id="${CSS.escape(name)}"]`).value.trim();
-    if (!id) { toast('Isi ID request dulu', true); return; }
+    if (!id) { toast(t('Isi ID request dulu'), true); return; }
     return run(name, async () => { view[name].discover = await api('POST', `/servers/${enc}/discover`, { id }); });
   }
   if (act === 'usepattern') return run(name, async () => {
     const p = view[name].discover.patterns[+b.dataset.i].pattern;
-    await saveServer(name, { logPaths: [...s.logPaths, p] }); toast('Folder log disimpan');
+    await saveServer(name, { logPaths: [...s.logPaths, p] }); toast(t('Folder log disimpan'));
   });
 });
 
 function openForm(s) {
   editing = s ? s.name : null;
   $('formPanel').classList.remove('hide');
-  $('formTitle').textContent = s ? `Ubah ${s.name}` : 'Tambah server';
+  $('formTitle').textContent = s ? t('Ubah {n}', { n: s.name }) : t('Tambah server');
   $('fName').value = s ? s.name : ''; $('fName').disabled = !!s;
   $('fRole').value = s?.role || ''; $('fHost').value = s?.host || ''; $('fPort').value = s?.port || 22;
   $('fUser').value = s?.username || ''; $('fPass').value = '';
-  $('passNote').textContent = s && s.hasPassword ? 'Password sudah tersimpan dan tidak bisa dilihat. Kosongkan kolom ini jika tidak ingin menggantinya.' : '';
+  $('passNote').textContent = s && s.hasPassword ? t('Password sudah tersimpan dan tidak bisa dilihat. Kosongkan kolom ini jika tidak ingin menggantinya.') : '';
   $('formPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   (s ? $('fHost') : $('fName')).focus();
 }
 $('addBtn').onclick = () => openForm(null);
+$('srvFilter').oninput = () => { srvPage = 0; render(); };
+$('srvState').onchange = () => { srvPage = 0; render(); };
+$('srvPager').onclick = e => { const b = e.target.closest('button[data-srvpage]'); if (!b) return; srvPage = +b.dataset.srvpage; render(); $('listTitle').scrollIntoView({ block: 'start' }); };
 $('cancel').onclick = () => $('formPanel').classList.add('hide');
 $('form').onsubmit = async e => {
   e.preventDefault();
@@ -358,22 +420,23 @@ $('form').onsubmit = async e => {
   if ($('fPass').value) body.password = $('fPass').value;     // left empty on purpose = keep the saved password
   try {
     await saveServer(name, body);
+    opened.add(name);
     $('fPass').value = ''; $('formPanel').classList.add('hide'); render();
-    toast(editing ? 'Perubahan disimpan' : 'Server disimpan. Lanjut: Tes koneksi.');
+    toast(editing ? t('Perubahan disimpan') : t('Server disimpan. Lanjut: Tes koneksi.'));
   } catch (err) { toast(err.message, true); }
 };
 
 // ---- masking ----------------------------------------------------------------------------------------------
-const KIND = { NIK: 'NIK (16 digit, dicek provinsi dan tanggal lahir)', KARTU: 'Nomor kartu (lolos cek Luhn)', TELEPON: 'Nomor telepon', RAHASIA: 'Password, PIN, OTP, token',
-  EMAIL: 'Email', NPWP: 'NPWP', REKENING: 'Nomor akun / VA', NAMA: 'Nama orang', ALAMAT: 'Alamat', TGL_LAHIR: 'Tanggal lahir',
-  KARTU_CVV: 'CVV kartu', IP: 'Alamat IP', KUSTOM: 'Field tambahan dan regex sendiri' };
+const KIND = { NIK: t('NIK (16 digit, dicek provinsi dan tanggal lahir)'), KARTU: t('Nomor kartu (lolos cek Luhn)'), TELEPON: t('Nomor telepon'), RAHASIA: 'Password, PIN, OTP, token',
+  EMAIL: 'Email', NPWP: 'NPWP', REKENING: t('Nomor akun / VA'), NAMA: t('Nama orang'), ALAMAT: t('Alamat'), TGL_LAHIR: t('Tanggal lahir'),
+  KARTU_CVV: t('CVV kartu'), IP: t('Alamat IP'), KUSTOM: t('Field tambahan dan regex sendiri') };
 let maskKinds = [];
 
 function ruleRow(r = {}) {
   const d = document.createElement('div'); d.className = 'rule';
-  d.innerHTML = `<input class="rn" placeholder="Nama aturan" maxlength="40" value="${esc(r.name)}"><input class="rx" placeholder="Regex, contoh \\bPOL-\\d{8}\\b" maxlength="200" value="${esc(r.regex)}">
-    <input class="rh" type="number" min="0" max="20" title="Karakter awal yang dibiarkan" value="${r.keepHead ?? 0}"><input class="rt" type="number" min="0" max="20" title="Karakter akhir yang dibiarkan" value="${r.keepTail ?? 0}">
-    <button type="button" class="small danger">Hapus</button>`;
+  d.innerHTML = `<input class="rn" placeholder="${t('Nama aturan')}" maxlength="40" value="${esc(r.name)}"><input class="rx" placeholder="${t('Regex, contoh')} \\bPOL-\\d{8}\\b" maxlength="200" value="${esc(r.regex)}">
+    <input class="rh" type="number" min="0" max="20" title="${t('Karakter awal yang dibiarkan')}" value="${r.keepHead ?? 0}"><input class="rt" type="number" min="0" max="20" title="${t('Karakter akhir yang dibiarkan')}" value="${r.keepTail ?? 0}">
+    <button type="button" class="small danger">${t('Hapus')}</button>`;
   d.querySelector('button').onclick = () => d.remove();
   return d;
 }
@@ -392,7 +455,7 @@ function renderMask(data) {
   $('maskKinds').innerHTML = maskKinds.map(k => `<label><input type="checkbox" value="${k}" ${c.disabled.includes(k) ? '' : 'checked'}> <span>${esc(KIND[k] || k)}</span></label>`).join('');
   $('maskFields').value = c.fields.join('\n');
   $('maskCustom').replaceChildren(...c.custom.map(ruleRow));
-  $('maskState').textContent = c.disabled.length ? `${c.disabled.length} filter dimatikan` : 'Semua filter aktif';
+  $('maskState').textContent = c.disabled.length ? t('{n} filter dimatikan', { n: c.disabled.length }) : t('Semua filter aktif');
   $('maskState').dataset.canWeaken = data.canWeaken;
 }
 
@@ -410,10 +473,14 @@ $('maskSave').onclick = async () => {
   try {
     const r = await api('PUT', '/masking', maskConfig());
     renderMask({ kinds: maskKinds, config: r.config, canWeaken: $('maskState').dataset.canWeaken === 'true' });
-    toast('Penyamaran disimpan. Berlaku di pencarian berikutnya.');
+    toast(t('Penyamaran disimpan. Berlaku di pencarian berikutnya.'));
   } catch (e) { toast(e.message, true); }
 };
 
+document.querySelectorAll('input[name=lang]').forEach(r => {
+  r.checked = r.value === LS.lang;
+  r.onchange = () => LS.setLang(r.value);
+});
 load();
 </script>
 </body>

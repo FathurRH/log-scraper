@@ -87,23 +87,23 @@ public class SshSearcher {
                 var events = ch.waitFor(EnumSet.of(ClientChannelEvent.CLOSED), timeout);
                 long ms = System.currentTimeMillis() - t0;
                 if (!events.contains(ClientChannelEvent.CLOSED))
-                    return new Outcome(s.name(), Status.TIMEOUT, "", "Server tidak selesai menjawab dalam " + timeout.toSeconds() + " detik", ms, keys.seen);
+                    return new Outcome(s.name(), Status.TIMEOUT, "", Lang.en() ? "The server did not finish answering within " + timeout.toSeconds() + " seconds" : "Server tidak selesai menjawab dalam " + timeout.toSeconds() + " detik", ms, keys.seen);
                 Integer exit = ch.getExitStatus();
                 String stdout = out.toString(StandardCharsets.UTF_8), stderr = err.toString(StandardCharsets.UTF_8).trim();
                 if (exit != null && exit == 126)
                     return new Outcome(s.name(), Status.DITOLAK, "", "Akun read-only menolak perintah", ms, keys.seen);
                 if (!stdout.isBlank()) return new Outcome(s.name(), Status.OK, stdout, stderr.isEmpty() ? null : stderr, ms, keys.seen);
                 if (exit == null)
-                    return new Outcome(s.name(), Status.ERROR, "", "Server menutup koneksi tanpa hasil", ms, keys.seen);
+                    return new Outcome(s.name(), Status.ERROR, "", Lang.t("Server menutup koneksi tanpa hasil", "The server closed the connection without a result"), ms, keys.seen);
                 if (exit > 1)
-                    return new Outcome(s.name(), Status.ERROR, "", stderr.isEmpty() ? "grep gagal (kode " + exit + ")" : stderr, ms, keys.seen);
+                    return new Outcome(s.name(), Status.ERROR, "", stderr.isEmpty() ? Lang.t("grep gagal (kode ", "grep failed (code ") + exit + ")" : stderr, ms, keys.seen);
                 return new Outcome(s.name(), Status.KOSONG, "", stderr.isEmpty() ? null : stderr, ms, keys.seen);
             }
         } catch (Exception e) {
             long ms = System.currentTimeMillis() - t0;
             if (keys.mismatch)
                 return new Outcome(s.name(), Status.KUNCI_BERUBAH, "",
-                        "Sidik jari server berbeda dari yang disimpan (" + keys.seen + "). Pastikan server memang diganti sebelum menyimpan yang baru", ms, keys.seen);
+                        Lang.en() ? "The server fingerprint differs from the saved one (" + keys.seen + "). Make sure the server really was replaced before saving the new one" : "Sidik jari server berbeda dari yang disimpan (" + keys.seen + "). Pastikan server memang diganti sebelum menyimpan yang baru", ms, keys.seen);
             if (e instanceof KeyProblem) return new Outcome(s.name(), Status.LOGIN_GAGAL, "", e.getMessage(), ms, keys.seen);
             return new Outcome(s.name(), classify(e), "", friendly(e), ms, keys.seen);
         } finally {
@@ -116,21 +116,21 @@ public class SshSearcher {
         if (s.keyFile() != null && !s.keyFile().isBlank()) {
             Path p = keyDir.resolve(s.keyFile()).normalize();
             if (!p.startsWith(keyDir) || !Files.isReadable(p))
-                throw new KeyProblem("File kunci \"" + s.keyFile() + "\" tidak ditemukan di folder kunci");
+                throw new KeyProblem(Lang.en() ? "Key file \"" + s.keyFile() + "\" not found in the key folder" : "File kunci \"" + s.keyFile() + "\" tidak ditemukan di folder kunci");
             try {
                 for (KeyPair kp : new FileKeyPairProvider(p).loadKeys(session)) {
                     session.addPublicKeyIdentity(kp);
                     any = true;
                 }
             } catch (Exception e) {
-                throw new KeyProblem("File kunci \"" + s.keyFile() + "\" tidak bisa dibaca (kunci dengan passphrase belum didukung)");
+                throw new KeyProblem(Lang.en() ? "Key file \"" + s.keyFile() + "\" cannot be read (keys with a passphrase are not supported yet)" : "File kunci \"" + s.keyFile() + "\" tidak bisa dibaca (kunci dengan passphrase belum didukung)");
             }
         }
         if (s.password() != null && !s.password().isBlank()) {
             session.addPasswordIdentity(s.password());
             any = true;
         }
-        if (!any) throw new KeyProblem("Belum ada password atau kunci SSH untuk server ini");
+        if (!any) throw new KeyProblem(Lang.t("Belum ada password atau kunci SSH untuk server ini", "There is no password or SSH key for this server yet"));
     }
 
     private static Status classify(Throwable e) {
@@ -146,10 +146,10 @@ public class SshSearcher {
 
     private static String friendly(Throwable e) {
         return switch (classify(e)) {
-            case TIDAK_TERJANGKAU -> "Server tidak bisa dihubungi (mati atau jaringan terputus)";
-            case LOGIN_GAGAL -> "Login SSH ditolak, cek username, password atau kunci SSH di pengaturan server";
-            case TIMEOUT -> "Koneksi ke server terlalu lama";
-            default -> "Gagal: " + e.getClass().getSimpleName();
+            case TIDAK_TERJANGKAU -> Lang.t("Server tidak bisa dihubungi (mati atau jaringan terputus)", "The server cannot be reached (down or the network is cut off)");
+            case LOGIN_GAGAL -> Lang.t("Login SSH ditolak, cek username, password atau kunci SSH di pengaturan server", "SSH login refused: check the username, password or SSH key in the server settings");
+            case TIMEOUT -> Lang.t("Koneksi ke server terlalu lama", "Connecting to the server took too long");
+            default -> Lang.t("Gagal: ", "Failed: ") + e.getClass().getSimpleName();
         };
     }
 

@@ -60,7 +60,7 @@ public class SetupController {
     public Map<String, Object> delete(@PathVariable String name, @RequestHeader(value = "X-Setup-Token", required = false) String token,
                                       HttpServletRequest req) {
         auth(token);
-        if (!store.delete(name)) throw new ApiException(404, "Server \"" + name + "\" tidak ada.");
+        if (!store.delete(name)) throw new ApiException(404, Lang.t("Server \"" + name + "\" tidak ada.", "Server \"" + name + "\" does not exist."));
         setup.audit(req.getRemoteAddr(), "hapus server " + name);
         return Map.of("deleted", name);
     }
@@ -137,7 +137,7 @@ public class SetupController {
         Masker.Rules next = MaskingStore.toRules(in);
         boolean weaker = masking.weakens(next);
         if (weaker && !tokenRequired())
-            throw new ApiException(403, "Penyamaran hanya bisa dikurangi kalau token admin (SETUP_TOKEN) sudah diatur. Menambah penyamaran tetap boleh.");
+            throw new ApiException(403, Lang.t("Penyamaran hanya bisa dikurangi kalau token admin (SETUP_TOKEN) sudah diatur. Menambah penyamaran tetap boleh.", "Masking can only be reduced once an admin token (SETUP_TOKEN) is set. Adding masking is always allowed."));
         masking.save(next);
         setup.audit(req.getRemoteAddr(), "ubah penyamaran: " + next.disabled().size() + " filter dimatikan, " + next.fields().size()
                 + " field tambahan, " + next.custom().size() + " aturan regex" + (weaker ? " (DIKURANGI)" : ""));
@@ -149,7 +149,7 @@ public class SetupController {
     public Map<String, Object> maskingTest(@RequestBody MaskTest in,
                                            @RequestHeader(value = "X-Setup-Token", required = false) String token) {
         auth(token);
-        if (in.text() == null || in.text().length() > 2000) throw new ApiException(400, "Teks contoh harus ada dan maksimal 2000 karakter.");
+        if (in.text() == null || in.text().length() > 2000) throw new ApiException(400, Lang.t("Teks contoh harus ada dan maksimal 2000 karakter.", "A sample text is required, at most 2000 characters."));
         Masker.Rules r = in.config() == null ? masking.rules() : MaskingStore.toRules(in.config());
         Masker.Result m = Masker.mask(in.text(), r);
         return Map.of("masked", m.text(), "counts", m.counts());
@@ -160,14 +160,14 @@ public class SetupController {
     }
 
     private ScraperProperties.Server saved(String name) {
-        return store.find(name).orElseThrow(() -> new ApiException(404, "Server \"" + name + "\" belum disimpan. Simpan dulu dengan PUT /api/setup/servers/" + name));
+        return store.find(name).orElseThrow(() -> new ApiException(404, Lang.t("Server \"" + name + "\" belum disimpan. Simpan dulu dengan PUT /api/setup/servers/" + name, "Server \"" + name + "\" is not saved yet. Save it first with PUT /api/setup/servers/" + name)));
     }
 
     private void auth(String token) {
         String want = props.setupToken();
         if (want == null || want.isBlank()) return;
         boolean ok = token != null && MessageDigest.isEqual(want.getBytes(StandardCharsets.UTF_8), token.getBytes(StandardCharsets.UTF_8));
-        if (!ok) throw new ApiException(401, "Pengaturan server butuh token admin di header X-Setup-Token.");
+        if (!ok) throw new ApiException(401, Lang.t("Pengaturan server butuh token admin di header X-Setup-Token.", "Server settings need the admin token in the X-Setup-Token header."));
     }
 
     @ExceptionHandler(ApiException.class)
