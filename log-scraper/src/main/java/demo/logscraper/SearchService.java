@@ -50,11 +50,11 @@ public class SearchService {
         this.ssh = ssh;
     }
 
-    /** Tidies what people paste from WhatsApp or a ticket ("TRX-88231)." or "  trx-88231 ") and refuses anything unsafe. */
+    /** Tidies what people paste from WhatsApp or a ticket ("REQ-88231)." or "  req-88231 ") and refuses anything unsafe. */
     public static String normalize(String raw) {
-        if (raw == null) throw new BadQuery("Masukkan ID transaksi atau kata yang dicari.");
+        if (raw == null) throw new BadQuery("Masukkan ID request atau kata yang dicari.");
         String q = raw.strip().replaceAll("^[\"'`(\\[{<]+|[\"'`)\\]}>.,;:!?]+$", "").strip();
-        if (q.isEmpty()) throw new BadQuery("Masukkan ID transaksi atau kata yang dicari.");
+        if (q.isEmpty()) throw new BadQuery("Masukkan ID request atau kata yang dicari.");
         if (q.chars().anyMatch(c -> c < 32)) throw new BadQuery("Cari satu baris saja, tanpa enter atau tab.");
         if (q.length() < 4) throw new BadQuery("Terlalu pendek: minimal 4 karakter supaya hasilnya tidak ribuan baris.");
         if (q.length() > 80) throw new BadQuery("Terlalu panjang: maksimal 80 karakter.");
@@ -130,7 +130,7 @@ public class SearchService {
             maskedEntries.add(new LogEntry(e.server(), e.time(), e.level(), e.thread(), e.logger(), m.text(), extra));
         }
         Diagnosis.Result diag = ID_LIKE.matcher(q).matches()
-                ? Diagnosis.of(maskedEntries, roles, props.moneyMovedMarkers(), props.failedMarkers())
+                ? Diagnosis.of(maskedEntries, roles, props.committedMarkers(), props.failedMarkers())
                 : Diagnosis.freeText(maskedEntries, q);
 
         List<String> suggestions = List.of();
@@ -160,7 +160,7 @@ public class SearchService {
         return String.join(" ", s.logPaths());
     }
 
-    /** "TRX-8823l" finds nothing; offer the real IDs that are one or two typos away. */
+    /** "REQ-8823l" finds nothing; offer the real IDs that are one or two typos away. */
     private List<String> suggest(String q, List<ScraperProperties.Server> servers, Duration timeout) {
         if (!ID_LIKE.matcher(q).matches()) return List.of();
         String prefix = q.substring(0, q.indexOf('-'));

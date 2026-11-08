@@ -106,17 +106,17 @@
 </style>
 </head>
 <body>
-<div class="demo-banner" id="demoBanner">Demo dengan data contoh: tidak ada server asli yang dihubungi. Coba ID <b>TRX-88231</b>, <b>TRX-88232</b> atau <b>TRX-88233</b>.</div>
+<div class="demo-banner" id="demoBanner">Demo dengan data contoh: tidak ada server asli yang dihubungi. Coba ID <b>REQ-88231</b>, <b>REQ-88232</b> atau <b>REQ-88233</b>.</div>
 <div class="wrap">
   <nav class="nav" aria-label="Menu utama"><a href="index.html" class="on" aria-current="page">Pencarian</a><a href="settings.html">Pengaturan server</a></nav>
   <header>
     <h1>Log Scraper</h1>
-    <p>Satu ID transaksi, semua server, satu timeline. Data nasabah disamarkan otomatis, tanpa instalasi apa pun di server.</p>
+    <p>Satu ID, semua server, satu timeline. Data pribadi disamarkan otomatis, tanpa instalasi apa pun di server.</p>
   </header>
 
   <div class="panel">
     <form id="f" autocomplete="off">
-      <input id="q" type="search" placeholder="ID transaksi, contoh TRX-88231" aria-label="ID transaksi" maxlength="120">
+      <input id="q" type="search" placeholder="ID request, order atau tiket, contoh REQ-88231" aria-label="ID yang dicari" maxlength="120">
       <select id="hours" aria-label="Rentang waktu">
         <option value="1">1 jam terakhir</option>
         <option value="6">6 jam terakhir</option>
@@ -126,7 +126,7 @@
       <button class="primary" id="go" type="submit" disabled>Cari</button>
       <button id="reset" type="button" class="hide">Bersihkan</button>
     </form>
-    <div class="hint" id="hint">Tempel ID dari keluhan nasabah atau tiket. Spasi dan tanda baca di ujung dibersihkan otomatis.</div>
+    <div class="hint" id="hint">Tempel ID dari laporan pengguna atau tiket. Spasi dan tanda baca di ujung dibersihkan otomatis.</div>
     <div class="chips" id="samples"></div>
   </div>
 
@@ -140,7 +140,7 @@
     <div class="stats" id="stats"></div>
     <div style="height:14px"></div>
     <div class="panel" id="journeyPanel">
-      <div class="row"><h3>Perjalanan transaksi</h3><span class="note">Satu jalur per server. Merah = ERROR, kuning = WARN.</span></div>
+      <div class="row"><h3>Perjalanan request</h3><span class="note">Satu jalur per server. Merah = ERROR, kuning = WARN.</span></div>
       <div id="journey"></div>
     </div>
     <div class="panel">
@@ -169,7 +169,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const COLORS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
-const KIND = { NIK: 'NIK', KARTU: 'nomor kartu', TELEPON: 'nomor telepon', RAHASIA: 'rahasia (token, password, OTP)', EMAIL: 'email', NPWP: 'NPWP', REKENING: 'nomor rekening', NAMA: 'nama', ALAMAT: 'alamat', TGL_LAHIR: 'tanggal lahir', KARTU_CVV: 'CVV kartu', IP: 'alamat IP', KUSTOM: 'data kustom' };
+const KIND = { NIK: 'NIK', KARTU: 'nomor kartu', TELEPON: 'nomor telepon', RAHASIA: 'rahasia (token, password, OTP)', EMAIL: 'email', NPWP: 'NPWP', REKENING: 'nomor akun', NAMA: 'nama', ALAMAT: 'alamat', TGL_LAHIR: 'tanggal lahir', KARTU_CVV: 'CVV kartu', IP: 'alamat IP', KUSTOM: 'data kustom' };
 const STATUS = {
   OK: ['✓', 'baris ditemukan'], KOSONG: ['–', 'tidak ada baris'], TIDAK_TERJANGKAU: ['✗', 'tidak terjangkau'],
   LOGIN_GAGAL: ['✗', 'login gagal'], TIMEOUT: ['✗', 'timeout'], DITOLAK: ['✗', 'perintah ditolak'], ERROR: ['✗', 'error'],
@@ -215,7 +215,7 @@ $('viewMerged').onclick = () => setView('merged');
 
 async function search() {
   const q = $('q').value;
-  if (!q.trim()) { showError('Masukkan ID transaksi atau kata yang dicari.'); return; }
+  if (!q.trim()) { showError('Masukkan ID atau kata yang dicari.'); return; }
   $('err').classList.add('hide');
   $('go').disabled = true; $('go').innerHTML = '<span class="spin"></span>';
   $('loading').classList.remove('hide');
@@ -254,7 +254,7 @@ function render(a) {
 
   const d = a.diagnosis;
   const down = a.servers.filter(s => !['OK', 'KOSONG'].includes(s.status));
-  const tagText = { GAGAL: 'TRANSAKSI GAGAL', BERHASIL: 'TRANSAKSI BERHASIL', TIDAK_JELAS: a.total ? 'HASIL PENCARIAN' : 'TIDAK DITEMUKAN' }[d.verdict];
+  const tagText = { GAGAL: 'ADA ERROR', BERHASIL: 'SELESAI NORMAL', TIDAK_JELAS: a.total ? 'HASIL PENCARIAN' : 'TIDAK DITEMUKAN' }[d.verdict];
   let sugg = '';
   if (a.total === 0) {
     sugg = a.suggestions.length
@@ -276,7 +276,7 @@ function render(a) {
     <div class="stat"><div class="big">${fmtSec(a.millis)} detik</div><div class="lbl">Log Scraper, ${a.servers.length} server sekaligus.
       Cara manual: ±${a.manualMinutes} menit (SSH dan grep satu per satu).</div></div>
     <div class="stat"><div class="big">${a.total} baris</div><div class="lbl">digabung jadi satu timeline dari ${a.servers.filter(s => s.hits).length} server</div></div>
-    <div class="stat"><div class="big">${maskedTotal} data disamarkan</div><div class="lbl">${maskedTotal ? esc(maskedList) + '. Nomor referensi yang bukan NIK atau kartu tetap terbaca.' : 'Tidak ada data nasabah di hasil ini.'}</div></div>`;
+    <div class="stat"><div class="big">${maskedTotal} data disamarkan</div><div class="lbl">${maskedTotal ? esc(maskedList) + '. Nomor referensi yang bukan NIK atau kartu tetap terbaca.' : 'Tidak ada data pribadi di hasil ini.'}</div></div>`;
 
   const empty = a.total === 0;
   $('stats').classList.toggle('hide', empty);
@@ -355,7 +355,7 @@ function renderRows(a) {
     else {
       const samples = s.unrecognizedSamples || [];
       body = `<p class="note">${esc(label)}${s.note ? ' · ' + esc(s.note) : ''}</p>` +
-        (samples.length ? `<details open><summary class="note">Contoh baris yang tidak dikenali (data nasabah sudah disamarkan)</summary><pre>${markMasked(samples.join('\n'))}</pre></details>` : '');
+        (samples.length ? `<details open><summary class="note">Contoh baris yang tidak dikenali (data pribadi sudah disamarkan)</summary><pre>${markMasked(samples.join('\n'))}</pre></details>` : '');
     }
     return `<section class="srvblock">${head}${body}</section>`;
   }).join('');
@@ -380,7 +380,7 @@ function ticketText(a) {
     if (!own.length) lines.push('(tidak ada baris)');
     own.forEach(e => put(e, false));
   });
-  lines.push('', 'Data nasabah sudah disamarkan otomatis.');
+  lines.push('', 'Data pribadi sudah disamarkan otomatis.');
   return lines.join('\n');
 }
 

@@ -150,7 +150,7 @@ public class SetupService {
                 hidden, unreadable, useRoots);
     }
 
-    /** payment.json.log and payment.json.log.1.gz both become /dir/payment*.log. Files of other kinds keep their exact path. */
+    /** app.json.log and app.json.log.1.gz both become /dir/app*.log. Files of other kinds keep their exact path. */
     static String patternFor(String path) {
         int slash = path.lastIndexOf('/');
         String dir = path.substring(0, slash), name = path.substring(slash + 1);

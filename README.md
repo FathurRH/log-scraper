@@ -1,7 +1,7 @@
 # Log Scraper
 
-Satu ID transaksi, semua server, satu timeline. Log Scraper searches one transaction ID across every server of an app
-over read-only SSH, merges the hits into one timeline, says where the transaction broke, and masks customer data
+Satu ID, semua server, satu timeline. Log Scraper searches one request ID across every server of an app
+over read-only SSH, merges the hits into one timeline, says where the request broke, and masks personal data
 before anything is shown or copied into a ticket. Nothing is installed on the servers: it runs the `grep` already there.
 
 ## What's in here
@@ -9,35 +9,35 @@ before anything is shown or copied into a ticket. Nothing is installed on the se
 | Folder | What it is |
 |---|---|
 | `log-scraper/` | The tool: Spring Boot 3.5 (Java 21) + Apache MINA SSHD client, one web page in Bahasa |
-| `sample-bank/` | A fake bank on four "servers" to search: api-gateway, payment-service, core-banking-adapter, notification-service. Each runs an SSH server whose `logreader` account may only run `grep`/`zgrep`/`sort`/`uniq`/`head` |
+| `sample-app/` | A small sample system on four "servers" to search: api-gateway, process-service, data-service, notification-service. Each runs an SSH server whose `logreader` account may only run `grep`/`zgrep`/`sort`/`uniq`/`head` |
 | `docker-compose.yml` | Starts the four servers and Log Scraper |
 
 ## Run it
 
 ```bash
-(cd sample-bank && mvn -B package)
-(cd log-scraper && mvn -B package)        # also runs the 17 unit tests
+(cd sample-app && mvn -B package)
+(cd log-scraper && mvn -B package)        # also runs the unit tests
 docker compose up -d --build
-open http://localhost:8090                # wait ~10 s for the first transactions
+open http://localhost:8090                # wait ~10 s for the first requests
 ```
 
-Try `TRX-88231` (fails, and the core debits the money twice), `TRX-88232` (succeeds), `TRX-88233` (insufficient funds),
-a typo like `trx-8823l`, or `docker compose stop app-04` to see a server that is down.
+Try `REQ-88231` (fails, but the data service still saves the record twice), `REQ-88232` (succeeds), `REQ-88233` (rejected: quota exceeded),
+a typo like `req-8823l`, or `docker compose stop app-04` to see a server that is down.
 
 ## How it works
 
-1. **Search:** `GET /api/search?q=TRX-88231&hours=24`. The term is tidied (spaces, pasted brackets, case), checked against
+1. **Search:** `GET /api/search?q=REQ-88231&hours=24`. The term is tidied (spaces, pasted brackets, case), checked against
    an allow-list of characters, single-quoted, and sent as `grep -h -i -F -A 40 -- '<term>' <log paths>` to every server
    in parallel (virtual threads, 5 s timeout per server).
 2. **Merge:** lines are parsed by timestamp; stack-trace lines stay with the entry above them; context lines from other
-   transactions are dropped; everything is sorted into one timeline.
+   requests are dropped; everything is sorted into one timeline.
 3. **Mask:** NIK (only when the province code and birth date are valid), card numbers (only when they pass Luhn), phone
-   numbers, emails, tokens, passwords, PINs and OTPs, NPWP, IP addresses (last octet), and, by field name, account numbers, customer names, addresses, birth dates, mother's maiden name and CVV. Reference numbers that are neither stay readable.
+   numbers, emails, tokens, passwords, PINs and OTPs, NPWP, IP addresses (last octet), and, by field name, account numbers, personal names, addresses, birth dates, mother's maiden name and CVV. Reference numbers that are neither stay readable.
 4. **Diagnose:** rules, not AI. The first ERROR (or failure-like WARN) gives "Putus di app-02, 4,0 detik setelah request
-   masuk". If the money moved (`debit POSTED`) but the customer was told it failed (`status=FAILED`), it raises a
-   reversal alert, and it flags a double debit.
+   masuk". If a step was already committed (`COMMITTED`) but the caller was told it failed (`status=FAILED`), it raises an
+   alert, and it flags a step that ran twice. Both markers are configurable.
 5. **Fail gracefully:** each server reports OK / KOSONG / TIDAK_TERJANGKAU / LOGIN_GAGAL / TIMEOUT / DITOLAK; a down
-   server never blocks the others. No hits → near-miss IDs are suggested ("TRX-8823l" → "TRX-88231").
+   server never blocks the others. No hits → near-miss IDs are suggested ("REQ-8823l" → "REQ-88231").
 6. **Audit:** every search is appended to `audit.log` (who, what, how many hits, how long).
 
 ## Configure for real servers
@@ -56,18 +56,18 @@ search without a restart and are saved in `servers.json`. Set `SETUP_TOKEN` to r
 ```bash
 H='-H Content-Type:application/json -H X-Setup-Token:...'
 # 1. access: add a server, then test it (network, server identity, login, grep available)
-curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"role":"payment","host":"10.1.2.3","username":"logreader","password":"..."}'
+curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"role":"worker","host":"10.1.2.3","username":"logreader","password":"..."}'
 curl -X POST $H localhost:8090/api/setup/servers/app-02/test
 # better than a password: Log Scraper makes a key; the answer holds the one line the server admin adds to authorized_keys
 curl -X POST $H localhost:8090/api/setup/servers/app-02/key
 # pin the server's identity with the SHA256 shown by the test; a changed key is then refused (KUNCI_BERUBAH)
 curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"hostKeyFingerprint":"SHA256:..."}'
 # 2. logs: paste an ID that really happened and get the folders that contain it (rotated files folded into one pattern)
-curl -X POST $H localhost:8090/api/setup/servers/app-02/discover -d '{"id":"TRX-88231"}'
-curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"logPaths":["/opt/payment/logs/payment*.log"]}'
-curl -X POST $H localhost:8090/api/setup/servers/app-02/check -d '{"path":"/opt/payment/logs/payment*.log"}'
+curl -X POST $H localhost:8090/api/setup/servers/app-02/discover -d '{"id":"REQ-88231"}'
+curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"logPaths":["/opt/worker/logs/worker*.log"]}'
+curl -X POST $H localhost:8090/api/setup/servers/app-02/check -d '{"path":"/opt/worker/logs/worker*.log"}'
 # 3. format: first lines of a log, how many the parser understands, masked
-curl -X POST $H localhost:8090/api/setup/servers/app-02/preview -d '{"path":"/opt/payment/logs/payment.json.log"}'
+curl -X POST $H localhost:8090/api/setup/servers/app-02/preview -d '{"path":"/opt/worker/logs/worker.json.log"}'
 ```
 
 Formats understood: Spring Boot / Logback, ISO with `T` (also Spring Boot 3), JSON lines, Log4j with square brackets, Tomcat / WebLogic.

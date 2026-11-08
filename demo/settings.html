@@ -78,7 +78,7 @@
 </style>
 </head>
 <body>
-<div class="demo-banner" id="demoBanner">Demo dengan data contoh: tidak ada server asli yang dihubungi. Coba ID <b>TRX-88231</b>, <b>TRX-88232</b> atau <b>TRX-88233</b>.</div>
+<div class="demo-banner" id="demoBanner">Demo dengan data contoh: tidak ada server asli yang dihubungi. Coba ID <b>REQ-88231</b>, <b>REQ-88232</b> atau <b>REQ-88233</b>.</div>
 <div class="wrap">
   <nav class="nav" aria-label="Menu utama"><a href="index.html">Pencarian</a><a href="settings.html" class="on" aria-current="page">Pengaturan server</a></nav>
   <header>
@@ -110,7 +110,7 @@
       <form id="form" autocomplete="off">
         <div class="grid">
           <div><label for="fName">Nama</label><input id="fName" required maxlength="40" placeholder="app-02" pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></div>
-          <div><label for="fRole">Peran</label><input id="fRole" maxlength="60" placeholder="payment-service"></div>
+          <div><label for="fRole">Peran</label><input id="fRole" maxlength="60" placeholder="api-service"></div>
           <div><label for="fHost">Host</label><input id="fHost" required placeholder="10.1.2.3"></div>
           <div><label for="fPort">Port</label><input id="fPort" type="number" min="1" max="65535" value="22"></div>
           <div><label for="fUser">Username (akun read-only)</label><input id="fUser" required placeholder="logreader"></div>
@@ -129,17 +129,17 @@
         <h2>Penyamaran data</h2>
         <span class="note" id="maskState"></span>
       </div>
-      <p class="note">Data nasabah disamarkan sebelum tampil di hasil pencarian. Matikan filter hanya kalau data itu memang tidak ada di log Anda. Halaman pencarian tidak bisa mengubah ini.</p>
+      <p class="note">Data pribadi disamarkan sebelum tampil di hasil pencarian. Matikan filter hanya kalau data itu memang tidak ada di log Anda. Halaman pencarian tidak bisa mengubah ini.</p>
       <div id="maskKinds" class="kinds"></div>
       <label for="maskFields" style="margin-top:12px;display:block">Nama field tambahan (satu per baris)</label>
-      <textarea id="maskFields" rows="3" placeholder="no_polis&#10;kode_nasabah" maxlength="2000"></textarea>
+      <textarea id="maskFields" rows="3" placeholder="user_id&#10;kode_member" maxlength="2000"></textarea>
       <p class="note">Nilai setelah <code>nama_field=</code> atau <code>nama_field: </code> akan disamarkan.</p>
       <label style="margin-top:12px;display:block">Aturan regex sendiri</label>
       <p class="note">Dua angka di kanan: jumlah karakter awal dan akhir yang tetap terlihat.</p>
       <div id="maskCustom"></div>
       <button type="button" class="small" id="maskAddRule">+ Tambah aturan</button>
       <label for="maskSample" style="margin-top:12px;display:block">Coba dengan contoh baris log</label>
-      <input id="maskSample" maxlength="2000" value="transfer ref=TRX-1 nik=3174011502900001 telp=081234567890 customer=&quot;Budi Santoso&quot; password=rahasia123">
+      <input id="maskSample" maxlength="2000" value="request ref=REQ-1 nik=3174011502900001 telp=081234567890 customer=&quot;Budi Santoso&quot; password=rahasia123">
       <div class="row" style="margin-top:8px">
         <button type="button" id="maskTry">Coba</button>
         <button type="button" class="primary" id="maskSave">Simpan penyamaran</button>
@@ -231,14 +231,14 @@ function card(s) {
     <h3>Folder log</h3>
     ${paths}
     <div class="row">
-      <input data-newpath="${n}" placeholder="/opt/payment/logs/payment*.log" style="flex:1 1 280px;width:auto">
+      <input data-newpath="${n}" placeholder="/opt/app/logs/app*.log" style="flex:1 1 280px;width:auto">
       <button class="small" data-act="addpath" data-name="${n}">Tambah</button>
     </div>
     ${v.check ? checkHtml(v.check) : ''}
     ${v.preview ? previewHtml(v.preview) : ''}
     <h3>Cari folder log dari sebuah ID</h3>
     <div class="row">
-      <input data-id="${n}" placeholder="ID transaksi yang terjadi hari ini, contoh TRX-88231" style="flex:1 1 280px;width:auto" maxlength="80">
+      <input data-id="${n}" placeholder="ID request yang terjadi hari ini, contoh REQ-88231" style="flex:1 1 280px;width:auto" maxlength="80">
       <button class="small" data-act="discover" data-name="${n}" ${isBusy ? 'disabled' : ''}>Cari folder</button>
     </div>
     ${v.discover ? discoverHtml(s, v.discover) : '<p class="note">Log Scraper mencari ID itu di folder umum dan menunjukkan file mana yang memuatnya.</p>'}
@@ -334,7 +334,7 @@ document.addEventListener('click', async e => {
   });
   if (act === 'discover') {
     const id = document.querySelector(`input[data-id="${CSS.escape(name)}"]`).value.trim();
-    if (!id) { toast('Isi ID transaksi dulu', true); return; }
+    if (!id) { toast('Isi ID request dulu', true); return; }
     return run(name, async () => { view[name].discover = await api('POST', `/servers/${enc}/discover`, { id }); });
   }
   if (act === 'usepattern') return run(name, async () => {
@@ -370,7 +370,7 @@ $('form').onsubmit = async e => {
 
 // ---- masking ----------------------------------------------------------------------------------------------
 const KIND = { NIK: 'NIK (16 digit, dicek provinsi dan tanggal lahir)', KARTU: 'Nomor kartu (lolos cek Luhn)', TELEPON: 'Nomor telepon', RAHASIA: 'Password, PIN, OTP, token',
-  EMAIL: 'Email', NPWP: 'NPWP', REKENING: 'Nomor rekening / VA', NAMA: 'Nama nasabah', ALAMAT: 'Alamat', TGL_LAHIR: 'Tanggal lahir',
+  EMAIL: 'Email', NPWP: 'NPWP', REKENING: 'Nomor akun / VA', NAMA: 'Nama orang', ALAMAT: 'Alamat', TGL_LAHIR: 'Tanggal lahir',
   KARTU_CVV: 'CVV kartu', IP: 'Alamat IP', KUSTOM: 'Field tambahan dan regex sendiri' };
 let maskKinds = [];
 

@@ -1,4 +1,4 @@
-package demo.bank;
+package demo.sampleapp;
 
 import org.apache.sshd.server.SshServer;
 import org.apache.sshd.server.channel.ChannelSession;

@@ -36,14 +36,14 @@ scraper:
       password: "${SSH_PASSWORD:bacasaja}"
       log-paths: ["/var/log/app/*.log"]
     - name: app-02
-      role: payment-service
+      role: process-service
       host: "${APP02_HOST:localhost}"
       port: "${APP02_PORT:2202}"
       username: logreader
       password: "${SSH_PASSWORD:bacasaja}"
       log-paths: ["/var/log/app/*.log"]
     - name: app-03
-      role: core-banking-adapter
+      role: data-service
       host: "${APP03_HOST:localhost}"
       port: "${APP03_PORT:2203}"
       username: logreader

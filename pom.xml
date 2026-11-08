@@ -7,7 +7,7 @@
   <version>1.0.0</version>
   <packaging>pom</packaging>
   <modules>
-    <module>sample-bank</module>
+    <module>sample-app</module>
     <module>log-scraper</module>
   </modules>
 </project>

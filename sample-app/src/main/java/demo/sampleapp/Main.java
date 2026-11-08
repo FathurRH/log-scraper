@@ -1,4 +1,4 @@
-package demo.bank;
+package demo.sampleapp;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -20,14 +20,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
- * A small fake bank made of four services, one per "server":
- * app-01 api-gateway -> app-02 payment-service -> app-03 core-banking-adapter, and app-04 notification-service.
+ * A small sample system made of four services, one per "server":
+ * app-01 api-gateway -> app-02 process-service -> app-03 data-service, and app-04 notification-service.
  * The gateway generates traffic on its own and replays three fixed stories that Log Scraper is demoed with:
- * TRX-88231 times out (but the core still debits the money), TRX-88232 succeeds, TRX-88233 has insufficient funds.
+ * REQ-88231 times out (but the data service still saves the record, twice), REQ-88232 succeeds, REQ-88233 is over quota.
  */
 public final class Main {
-    static final Set<String> SLOW_IDS = Set.of("TRX-88231");
-    static final Set<String> BROKE_IDS = Set.of("TRX-88233");
+    static final Set<String> SLOW_IDS = Set.of("REQ-88231");
+    static final Set<String> BROKE_IDS = Set.of("REQ-88233");
     static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1))
             .executor(Executors.newVirtualThreadPerTaskExecutor()).build();
     static final AtomicInteger THREAD = new AtomicInteger();
@@ -46,8 +46,8 @@ public final class Main {
         http.createContext("/health", ex -> reply(ex, 200, "UP"));
         switch (role) {
             case "gateway" -> startGateway();
-            case "payment" -> http.createContext("/pay", Main::pay);
-            case "core" -> http.createContext("/debit", Main::debit);
+            case "process" -> http.createContext("/process", Main::process);
+            case "data" -> http.createContext("/save", Main::save);
             case "notif" -> http.createContext("/send", Main::send);
             default -> throw new IllegalArgumentException("unknown ROLE " + role);
         }
@@ -58,7 +58,7 @@ public final class Main {
 
     // ---------------------------------------------------------------- app-01 api-gateway
     static void startGateway() {
-        String L = "c.d.gateway.TransferController";
+        String L = "c.d.gateway.RequestController";
         ScheduledExecutorService ses = Executors.newScheduledThreadPool(4, r -> {
             Thread t = new Thread(r, "http-exec-" + THREAD.incrementAndGet());
             t.setDaemon(true);
@@ -66,119 +66,120 @@ public final class Main {
         });
         // the three demo stories, now and every 10 minutes so a "last 1 hour" search always finds them
         ses.scheduleAtFixedRate(() -> {
-            transfer(L, "TRX-88231", 2_500_000);
+            submit(L, "REQ-88231", 25);
             sleep(1500);
-            transfer(L, "TRX-88232", 150_000);
+            submit(L, "REQ-88232", 3);
             sleep(1500);
-            transfer(L, "TRX-88233", 9_750_000);
-        }, 4, 600, TimeUnit.SECONDS);
-        // background traffic from other customers
-        ses.scheduleWithFixedDelay(() -> transfer(L, "TRX-" + (10000 + ThreadLocalRandom.current().nextInt(89999)),
-                (1 + ThreadLocalRandom.current().nextInt(500)) * 10_000L), 6, 900, TimeUnit.MILLISECONDS);
-        ses.scheduleAtFixedRate(() -> AppLog.debug("c.d.gateway.HealthIndicator", "downstream health OK payment=UP latency=12ms"),
+            submit(L, "REQ-88233", 975);
+        }, 8, 600, TimeUnit.SECONDS);
+        // background traffic from other users
+        ses.scheduleWithFixedDelay(() -> submit(L, "REQ-" + (10000 + ThreadLocalRandom.current().nextInt(89999)),
+                1 + ThreadLocalRandom.current().nextInt(500)), 20_000, 900, TimeUnit.MILLISECONDS);
+        ses.scheduleAtFixedRate(() -> AppLog.debug("c.d.gateway.HealthIndicator", "downstream health OK process=UP latency=12ms"),
                 10, 30, TimeUnit.SECONDS);
     }
 
-    static void transfer(String L, String trx, long amount) {
+    static void submit(String L, String trx, long amount) {
         try {
             String nik = Pii.nik(), phone = Pii.phone(), card = Pii.card();
             long t0 = System.currentTimeMillis();
-            AppLog.info(L, "POST /api/v1/transfer trxId=" + trx + " customer=\"" + Pii.name() + "\" nik=" + nik
-                    + " phone=" + phone + " amount=" + amount + " channel=MOBILE");
-            AppLog.debug("c.d.gateway.AuthFilter", "trxId=" + trx + " Authorization: Bearer " + Pii.token() + " device=ANDROID");
-            HttpResponse<String> res = post(env("PAYMENT_URL", "http://app-02:8080") + "/pay", Duration.ofSeconds(6),
-                    Map.of("trxId", trx, "amount", "" + amount, "card", card, "phone", phone, "merchantRef", Pii.merchantRef()));
+            AppLog.info(L, "POST /api/v1/requests reqId=" + trx + " customer=\"" + Pii.name() + "\" nik=" + nik
+                    + " phone=" + phone + " units=" + amount + " channel=MOBILE");
+            AppLog.debug("c.d.gateway.AuthFilter", "reqId=" + trx + " Authorization: Bearer " + Pii.token() + " device=ANDROID");
+            HttpResponse<String> res = post(env("PROCESS_URL", "http://app-02:8080") + "/process", Duration.ofSeconds(6),
+                    Map.of("reqId", trx, "units", "" + amount, "card", card, "phone", phone, "ref", Pii.ref()));
             long ms = System.currentTimeMillis() - t0;
             if (res.statusCode() == 200)
-                AppLog.info(L, "trxId=" + trx + " status=SUCCESS httpStatus=200 elapsed=" + ms + "ms");
+                AppLog.info(L, "reqId=" + trx + " status=SUCCESS httpStatus=200 elapsed=" + ms + "ms");
             else
-                AppLog.warn(L, "trxId=" + trx + " status=FAILED httpStatus=" + res.statusCode() + " reason=" + res.body() + " elapsed=" + ms + "ms");
+                AppLog.warn(L, "reqId=" + trx + " status=FAILED httpStatus=" + res.statusCode() + " reason=" + res.body() + " elapsed=" + ms + "ms");
         } catch (Exception e) {
-            AppLog.error(L, "trxId=" + trx + " status=FAILED payment-service unreachable", e);
+            AppLog.error(L, "reqId=" + trx + " status=FAILED process-service unreachable", e);
         }
     }
 
-    // ---------------------------------------------------------------- app-02 payment-service
-    static void pay(HttpExchange ex) throws IOException {
-        String L = "c.d.payment.PaymentService";
+    // ---------------------------------------------------------------- app-02 process-service
+    static void process(HttpExchange ex) throws IOException {
+        String L = "c.d.process.RequestService";
         Map<String, String> f = form(ex);
-        String trx = f.get("trxId");
-        AppLog.info(L, "received trxId=" + trx + " amount=" + f.get("amount") + " card=" + f.get("card") + " merchantRef=" + f.get("merchantRef"));
-        AppLog.debug("c.d.payment.FraudCheck", "trxId=" + trx + " score=0." + (10 + ThreadLocalRandom.current().nextInt(30)) + " result=PASS");
-        Map<String, String> body = Map.of("trxId", trx, "amount", f.get("amount"), "account", "00" + f.get("card").substring(8, 16));
+        String trx = f.get("reqId");
+        AppLog.info(L, "received reqId=" + trx + " units=" + f.get("units") + " card=" + f.get("card") + " ref=" + f.get("ref"));
+        AppLog.debug("c.d.process.Validator", "reqId=" + trx + " score=0." + (10 + ThreadLocalRandom.current().nextInt(30)) + " result=PASS");
+        Map<String, String> body = Map.of("reqId", trx, "units", f.get("units"), "account", "00" + f.get("card").substring(8, 16));
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                AppLog.info("c.d.payment.CoreBankingClient", "calling core-banking /debit trxId=" + trx + " attempt=" + attempt + " timeout=2000ms");
-                HttpResponse<String> res = post(env("CORE_URL", "http://app-03:8080") + "/debit", Duration.ofSeconds(2), body);
+                AppLog.info("c.d.process.DataClient", "calling data-service /save reqId=" + trx + " attempt=" + attempt + " timeout=2000ms");
+                HttpResponse<String> res = post(env("DATA_URL", "http://app-03:8080") + "/save", Duration.ofSeconds(2), body);
                 if (res.statusCode() == 422) {
-                    AppLog.warn(L, "trxId=" + trx + " rejected by core: " + res.body());
+                    AppLog.warn(L, "reqId=" + trx + " rejected by data-service: " + res.body());
                     reply(ex, 422, res.body());
                     return;
                 }
-                AppLog.info(L, "trxId=" + trx + " debit OK ref=" + res.body());
+                AppLog.info(L, "reqId=" + trx + " saved ref=" + res.body());
                 notifyAsync(trx, f.get("phone"));
                 reply(ex, 200, "OK");
                 return;
             } catch (java.net.http.HttpTimeoutException e) {
                 if (attempt == 1) {
-                    AppLog.warn("c.d.payment.CoreBankingClient", "trxId=" + trx + " core-banking timeout after 2000ms, retry 1/1");
+                    AppLog.warn("c.d.process.DataClient", "reqId=" + trx + " data-service timeout after 2000ms, retry 1/1");
                 } else {
-                    AppLog.error(L, "trxId=" + trx + " FAILED after retry: core-banking did not answer in time", wrap(e));
-                    reply(ex, 504, "CORE_TIMEOUT");
+                    AppLog.error(L, "reqId=" + trx + " FAILED after retry: data-service did not answer in time", wrap(e));
+                    reply(ex, 504, "UPSTREAM_TIMEOUT");
                     return;
                 }
             } catch (Exception e) {
-                AppLog.error(L, "trxId=" + trx + " FAILED calling core-banking", e);
-                reply(ex, 502, "CORE_ERROR");
+                AppLog.error(L, "reqId=" + trx + " FAILED calling data-service", e);
+                reply(ex, 502, "UPSTREAM_ERROR");
                 return;
             }
         }
     }
 
     private static Exception wrap(Exception e) {
-        return new IllegalStateException("CoreBankingTimeoutException: no reply from core host in 2000ms", e);
+        return new IllegalStateException("UpstreamTimeoutException: no reply from data-service in 2000ms", e);
     }
 
     static void notifyAsync(String trx, String phone) {
         Thread.ofVirtual().start(() -> {
             try {
-                post(env("NOTIF_URL", "http://app-04:8080") + "/send", Duration.ofSeconds(2), Map.of("trxId", trx, "phone", phone));
+                post(env("NOTIF_URL", "http://app-04:8080") + "/send", Duration.ofSeconds(2), Map.of("reqId", trx, "phone", phone));
             } catch (Exception e) {
-                AppLog.warn("c.d.payment.Notifier", "trxId=" + trx + " notification not sent: " + e.getClass().getSimpleName());
+                AppLog.warn("c.d.process.Notifier", "reqId=" + trx + " notification not sent: " + e.getClass().getSimpleName());
             }
         });
     }
 
-    // ---------------------------------------------------------------- app-03 core-banking-adapter
-    static void debit(HttpExchange ex) throws IOException {
-        String L = "c.d.core.DebitHandler";
+    // ---------------------------------------------------------------- app-03 data-service
+    static void save(HttpExchange ex) throws IOException {
+        String L = "c.d.data.RecordHandler";
         Map<String, String> f = form(ex);
-        String trx = f.get("trxId");
+        String trx = f.get("reqId");
         long t0 = System.currentTimeMillis();
-        AppLog.info(L, "debit request trxId=" + trx + " account=" + f.get("account") + " amount=" + f.get("amount"));
-        boolean slow = SLOW_IDS.contains(trx) || ThreadLocalRandom.current().nextInt(100) < 2;
-        boolean broke = BROKE_IDS.contains(trx) || ThreadLocalRandom.current().nextInt(100) < 4;
+        AppLog.info(L, "save request reqId=" + trx + " account=" + f.get("account") + " units=" + f.get("units"));
+        boolean fixed = trx.startsWith("REQ-8823");   // the demo stories always play out the same way
+        boolean slow = SLOW_IDS.contains(trx) || (!fixed && ThreadLocalRandom.current().nextInt(100) < 2);
+        boolean broke = BROKE_IDS.contains(trx) || (!fixed && ThreadLocalRandom.current().nextInt(100) < 4);
         sleep(slow ? 3400 + ThreadLocalRandom.current().nextInt(300) : 40 + ThreadLocalRandom.current().nextInt(160));
         long ms = System.currentTimeMillis() - t0;
         if (broke && !slow) {
-            AppLog.warn(L, "trxId=" + trx + " INSUFFICIENT_FUNDS balance below amount, elapsed=" + ms + "ms");
-            reply(ex, 422, "INSUFFICIENT_FUNDS");
+            AppLog.warn(L, "reqId=" + trx + " QUOTA_EXCEEDED remaining quota below requested units, elapsed=" + ms + "ms");
+            reply(ex, 422, "QUOTA_EXCEEDED");
             return;
         }
-        String ref = "CB" + System.currentTimeMillis() % 100000000;
-        if (slow) AppLog.warn("c.d.core.HostConnector", "trxId=" + trx + " core host slow: replied after " + ms + "ms (limit 2000ms)");
-        AppLog.info(L, "trxId=" + trx + " debit POSTED ref=" + ref + " elapsed=" + ms + "ms");
+        String ref = "RC" + System.currentTimeMillis() % 100000000;
+        if (slow) AppLog.warn("c.d.data.StorageConnector", "reqId=" + trx + " storage slow: replied after " + ms + "ms (limit 2000ms)");
+        AppLog.info(L, "reqId=" + trx + " record COMMITTED ref=" + ref + " elapsed=" + ms + "ms");
         try { reply(ex, 200, ref); } catch (IOException gone) {
-            AppLog.warn(L, "trxId=" + trx + " caller already disconnected, debit stays POSTED ref=" + ref);
+            AppLog.warn(L, "reqId=" + trx + " caller already disconnected, ref=" + ref + " was saved anyway");
         }
     }
 
     // ---------------------------------------------------------------- app-04 notification-service
     static void send(HttpExchange ex) throws IOException {
         Map<String, String> f = form(ex);
-        String trx = f.get("trxId");
-        AppLog.info("c.d.notif.SmsSender", "trxId=" + trx + " SMS to phone=" + f.get("phone") + " text=\"Transfer berhasil. Kode referensi: " + Pii.otp() + "\"");
-        AppLog.info("c.d.notif.SmsSender", "trxId=" + trx + " provider accepted msgId=SMS" + ThreadLocalRandom.current().nextInt(1_000_000));
+        String trx = f.get("reqId");
+        AppLog.info("c.d.notif.SmsSender", "reqId=" + trx + " SMS to phone=" + f.get("phone") + " text=\"Permintaan Anda selesai diproses. Kode referensi: " + Pii.otp() + "\"");
+        AppLog.info("c.d.notif.SmsSender", "reqId=" + trx + " provider accepted msgId=SMS" + ThreadLocalRandom.current().nextInt(1_000_000));
         reply(ex, 200, "SENT");
     }
 

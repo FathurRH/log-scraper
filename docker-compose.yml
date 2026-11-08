@@ -1,37 +1,37 @@
-# A fake bank on four "servers" plus Log Scraper.
+# A small sample system on four "servers" plus Log Scraper.
 #   docker compose up -d --build      then open http://localhost:8090
 #   docker compose stop app-04         to see how Log Scraper reports a server that is down
-x-bank: &bank
-  build: ./sample-bank
-  image: log-scraper/sample-bank:1.0
-  environment: &bankenv
+x-sample: &sample
+  build: ./sample-app
+  image: log-scraper/sample-app:1.0
+  environment: &sampleenv
     SSH_USER: logreader
     SSH_PASSWORD: ${SSH_PASSWORD:-bacasaja}
-    PAYMENT_URL: http://app-02:8080
-    CORE_URL: http://app-03:8080
+    PROCESS_URL: http://app-02:8080
+    DATA_URL: http://app-03:8080
     NOTIF_URL: http://app-04:8080
   restart: unless-stopped
 
 services:
   app-01:
-    <<: *bank
+    <<: *sample
     hostname: app-01
-    environment: { <<: *bankenv, ROLE: gateway }
+    environment: { <<: *sampleenv, ROLE: gateway }
     ports: ["2201:2222"]
   app-02:
-    <<: *bank
+    <<: *sample
     hostname: app-02
-    environment: { <<: *bankenv, ROLE: payment }
+    environment: { <<: *sampleenv, ROLE: process }
     ports: ["2202:2222"]
   app-03:
-    <<: *bank
+    <<: *sample
     hostname: app-03
-    environment: { <<: *bankenv, ROLE: core }
+    environment: { <<: *sampleenv, ROLE: data }
     ports: ["2203:2222"]
   app-04:
-    <<: *bank
+    <<: *sample
     hostname: app-04
-    environment: { <<: *bankenv, ROLE: notif }
+    environment: { <<: *sampleenv, ROLE: notif }
     ports: ["2204:2222"]
 
   log-scraper:

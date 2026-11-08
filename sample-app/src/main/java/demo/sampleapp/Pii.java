@@ -1,4 +1,4 @@
-package demo.bank;
+package demo.sampleapp;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -29,7 +29,7 @@ final class Pii {
     }
 
     /** 16-digit reference that is neither a valid card (Luhn) nor a valid NIK, to show masking is not blind. */
-    static String merchantRef() {
+    static String ref() {
         while (true) {
             StringBuilder sb = new StringBuilder("88");
             while (sb.length() < 16) sb.append(r().nextInt(10));

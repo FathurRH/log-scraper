@@ -3,3 +3,4 @@ target/
 servers.json
 keys/
 audit.log
+dependency-reduced-pom.xml

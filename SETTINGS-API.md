@@ -27,13 +27,13 @@ Server name: letters, digits, `.`, `_`, `-` (max 40). Log paths: absolute, no sp
 
 ```http
 PUT /api/setup/servers/app-02
-{ "role": "payment", "host": "10.1.2.3", "port": 22, "username": "logreader",
-  "password": "...", "logPaths": ["/opt/payment/logs/payment*.log"] }
+{ "role": "worker", "host": "10.1.2.3", "port": 22, "username": "logreader",
+  "password": "...", "logPaths": ["/opt/worker/logs/worker*.log"] }
 ```
 ```json
-{ "name": "app-02", "role": "payment", "host": "10.1.2.3", "port": 22, "username": "logreader",
+{ "name": "app-02", "role": "worker", "host": "10.1.2.3", "port": 22, "username": "logreader",
   "hasPassword": true, "keyFile": null, "hostKeyFingerprint": null,
-  "logPaths": ["/opt/payment/logs/payment*.log"] }
+  "logPaths": ["/opt/worker/logs/worker*.log"] }
 ```
 
 Fields: `role`, `host`, `port` (default 22), `username`, `password`, `keyFile` (a file in the key folder, set by `/key`),
@@ -63,27 +63,27 @@ The private key stays in the key folder; the server admin runs `installCommand` 
 
 ## Step 2: find the logs
 
-`POST /servers/app-02/discover` with `{ "id": "TRX-88231", "roots": ["/opt"] }` (`roots` optional, default `/var/log /opt /app /srv /u01 /home`)
+`POST /servers/app-02/discover` with `{ "id": "REQ-88231", "roots": ["/opt"] }` (`roots` optional, default `/var/log /opt /app /srv /u01 /home`)
 ```json
 { "status": "OK", "note": null,
-  "patterns": [ { "pattern": "/opt/payment/logs/payment*.log", "files": 1,
-                  "examples": ["/opt/payment/logs/payment.json.log"], "compressedRotated": 1 } ],
+  "patterns": [ { "pattern": "/opt/worker/logs/worker*.log", "files": 1,
+                  "examples": ["/opt/worker/logs/worker.json.log"], "compressedRotated": 1 } ],
   "filesFound": 2, "hiddenSystemLogs": 1, "unreadableFolders": 0, "searchedRoots": ["/opt"] }
 ```
 Rotated files are folded into one pattern; system logs (auth.log, syslog, ...) are hidden. `compressedRotated` counts `.gz` files, which are not searched yet.
-Save a pattern with `PUT` (`logPaths`), then confirm it: `POST /servers/app-02/check` with `{ "path": "/opt/payment/logs/payment*.log" }`
+Save a pattern with `PUT` (`logPaths`), then confirm it: `POST /servers/app-02/check` with `{ "path": "/opt/worker/logs/worker*.log" }`
 ```json
-{ "status": "OK", "count": 1, "files": ["/opt/payment/logs/payment.json.log"], "note": null }
+{ "status": "OK", "count": 1, "files": ["/opt/worker/logs/worker.json.log"], "note": null }
 ```
 
 ## Step 3: check the format
 
-`POST /servers/app-02/preview` with `{ "path": "/opt/payment/logs/payment.json.log", "lines": 20 }` (max 50)
+`POST /servers/app-02/preview` with `{ "path": "/opt/worker/logs/worker.json.log", "lines": 20 }` (max 50)
 ```json
 { "status": "OK", "lines": 20, "recognized": 20, "unrecognized": 0, "percent": 100, "ok": true,
   "format": "JSON satu baris per log", "formats": { "JSON": 20 },
   "rows": [ { "time": "2026-11-06 09:14:02.118", "level": "INFO", "thread": "", "logger": "pay",
-              "message": "transfer request ref=TRX-55120 rekening=12****90", "format": "JSON" } ],
+              "message": "request received ref=REQ-55120 account=12****90", "format": "JSON" } ],
   "unrecognizedSamples": [], "masked": { "REKENING": 1 }, "advice": null }
 ```
 `ok` is true when at least 80% of lines are understood. Otherwise `advice` explains, and `unrecognizedSamples` shows (masked) lines that fit no format.
@@ -98,9 +98,9 @@ Formats: Spring Boot / Logback, ISO with `T`, JSON lines, Log4j with square brac
 
 ```bash
 H='-H Content-Type:application/json -H X-Setup-Token:YOURTOKEN'
-curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"role":"payment","host":"10.1.2.3","username":"logreader","password":"..."}'
+curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"role":"worker","host":"10.1.2.3","username":"logreader","password":"..."}'
 curl -X POST $H localhost:8090/api/setup/servers/app-02/test
-curl -X POST $H localhost:8090/api/setup/servers/app-02/discover -d '{"id":"TRX-88231"}'
-curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"logPaths":["/opt/payment/logs/payment*.log"]}'
-curl -X POST $H localhost:8090/api/setup/servers/app-02/preview -d '{"path":"/opt/payment/logs/payment.json.log"}'
+curl -X POST $H localhost:8090/api/setup/servers/app-02/discover -d '{"id":"REQ-88231"}'
+curl -X PUT  $H localhost:8090/api/setup/servers/app-02 -d '{"logPaths":["/opt/worker/logs/worker*.log"]}'
+curl -X POST $H localhost:8090/api/setup/servers/app-02/preview -d '{"path":"/opt/worker/logs/worker.json.log"}'
 ```

@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * Reads a merged timeline and says, in one Bahasa sentence, how the transaction ended and where it broke.
+ * Reads a merged timeline and says, in one Bahasa sentence, how the request ended and where it broke.
  * Pure rules over the log lines, no AI at runtime.
  */
 public final class Diagnosis {
@@ -13,7 +13,7 @@ public final class Diagnosis {
     public record Result(Verdict verdict, String headline, List<String> details, List<String> path, long spanMillis,
                          String alert) {}
 
-    public static Result of(List<LogEntry> timeline, Map<String, String> roles, List<String> moneyMoved, List<String> failed) {
+    public static Result of(List<LogEntry> timeline, Map<String, String> roles, List<String> committed, List<String> failed) {
         if (timeline.isEmpty()) return new Result(Verdict.TIDAK_JELAS, "Tidak ada log untuk ID ini.", List.of(), List.of(), 0, null);
         LogEntry first = timeline.getFirst(), last = timeline.getLast();
         List<String> path = timeline.stream().map(LogEntry::server).distinct().toList();
@@ -21,7 +21,7 @@ public final class Diagnosis {
 
         Optional<LogEntry> firstError = timeline.stream().filter(LogEntry::isError).findFirst();
         Optional<LogEntry> reportedFailed = timeline.stream().filter(e -> containsAny(e.message(), failed)).findFirst();
-        Optional<LogEntry> moved = timeline.stream().filter(e -> containsAny(e.message(), moneyMoved)).findFirst();
+        Optional<LogEntry> moved = timeline.stream().filter(e -> containsAny(e.message(), committed)).findFirst();
         Optional<LogEntry> problem = firstError
                 .or(() -> timeline.stream().filter(LogEntry::isWarn).filter(e -> looksLikeFailure(e.message())).findFirst())
                 .or(() -> reportedFailed);
@@ -29,13 +29,13 @@ public final class Diagnosis {
         List<String> details = new ArrayList<>();
         details.add("Melewati " + path.size() + " server: " + String.join(" → ", path.stream().map(s -> label(s, roles)).toList()) + ".");
         String alert = null;
-        long movedCount = timeline.stream().filter(e -> containsAny(e.message(), moneyMoved)).count();
+        long movedCount = timeline.stream().filter(e -> containsAny(e.message(), committed)).count();
         if (reportedFailed.isPresent() && moved.isPresent()) {
-            alert = "Dana sudah terdebit " + (movedCount > 1 ? movedCount + " kali " : "") + "di " + label(moved.get().server(), roles)
-                    + ", tetapi transaksi dilaporkan GAGAL ke nasabah. Kemungkinan saldo nasabah terpotong"
-                    + (movedCount > 1 ? " lebih dari sekali" : "") + " tanpa transfer: cek dan lakukan reversal.";
+            alert = "Data sudah tersimpan " + (movedCount > 1 ? movedCount + " kali " : "") + "di " + label(moved.get().server(), roles)
+                    + ", tetapi proses dilaporkan GAGAL ke pengguna. Kemungkinan perubahan sudah terjadi"
+                    + (movedCount > 1 ? " lebih dari sekali" : "") + " tanpa konfirmasi: cek dan batalkan bila perlu.";
         } else if (movedCount > 1) {
-            alert = "Dana terdebit " + movedCount + " kali di " + label(moved.get().server(), roles) + " untuk satu transaksi. Cek kemungkinan debit ganda.";
+            alert = "Data tersimpan " + movedCount + " kali di " + label(moved.get().server(), roles) + " untuk satu ID. Cek kemungkinan proses ganda.";
         }
         if (problem.isPresent()) {
             LogEntry p = problem.get();
@@ -51,25 +51,25 @@ public final class Diagnosis {
                 details, path, span, alert);
     }
 
-    /** For free-text searches the lines belong to many transactions, so only count them. */
+    /** For free-text searches the lines belong to many requests, so only count them. */
     public static Result freeText(List<LogEntry> timeline, String q) {
         List<String> path = timeline.stream().map(LogEntry::server).distinct().toList();
         long errors = timeline.stream().filter(LogEntry::isError).count();
         String head = timeline.isEmpty() ? "Tidak ada log untuk kata ini."
                 : "Kata \"" + q + "\" muncul di " + timeline.size() + " baris dari " + path.size() + " server"
                   + (errors > 0 ? ", " + errors + " di antaranya ERROR." : ".");
-        return new Result(Verdict.TIDAK_JELAS, head, List.of("Cari satu ID transaksi untuk melihat di mana sebuah transaksi putus."),
+        return new Result(Verdict.TIDAK_JELAS, head, List.of("Cari satu ID request untuk melihat di mana prosesnya putus."),
                 path, 0, null);
     }
 
     private static String shortReason(LogEntry e) {
-        String m = e.message().replaceAll("trxId=\\S+\\s*", "").trim();
+        String m = e.message().replaceAll("(?i)(trx|req|request|order|corr|correlation|trace)[_-]?id=\\S+\\s*", "").trim();
         return m.length() > 120 ? m.substring(0, 117) + "..." : m;
     }
 
     private static boolean looksLikeFailure(String m) {
         String s = m.toLowerCase(Locale.ROOT);
-        return s.contains("fail") || s.contains("timeout") || s.contains("insufficient") || s.contains("rejected") || s.contains("gagal");
+        return s.contains("fail") || s.contains("timeout") || s.contains("insufficient") || s.contains("exceeded") || s.contains("rejected") || s.contains("gagal");
     }
 
     private static boolean containsAny(String s, List<String> needles) {

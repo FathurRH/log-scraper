@@ -1,4 +1,4 @@
-package demo.bank;
+package demo.sampleapp;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -6,7 +6,7 @@ import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-/** Writes Spring-Boot-style log lines: 2026-11-02 21:15:03.123  INFO [http-exec-3] c.d.b.PaymentService : message */
+/** Writes Spring-Boot-style log lines: 2026-11-02 21:15:03.123  INFO [http-exec-3] c.d.p.RequestService : message */
 final class AppLog {
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private static PrintWriter out;

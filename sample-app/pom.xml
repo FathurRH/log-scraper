@@ -3,7 +3,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>demo</groupId>
-  <artifactId>sample-bank</artifactId>
+  <artifactId>sample-app</artifactId>
   <version>1.0.0</version>
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
@@ -22,7 +22,7 @@
     </dependency>
   </dependencies>
   <build>
-    <finalName>sample-bank</finalName>
+    <finalName>sample-app</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -35,7 +35,7 @@
             <configuration>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>demo.bank.Main</mainClass>
+                  <mainClass>demo.sampleapp.Main</mainClass>
                 </transformer>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
               </transformers>
