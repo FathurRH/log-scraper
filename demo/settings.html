@@ -248,9 +248,11 @@ function render() {
   $('listCount').classList.toggle('hide', list.length === servers.length || !servers.length);
   $('listCount').textContent = t('Menampilkan {n} dari {m} server.', { n: list.length, m: servers.length });
   $('servers').innerHTML = shown.map(card).join('') || (servers.length ? `<p class="note">${t('Tidak ada server yang cocok dengan saringan.')}</p>` : '');
-  const pb = (p, label, off) => `<button type="button" class="small" data-srvpage="${p}" ${off ? 'disabled' : ''}>${label}</button>`;
-  $('srvPager').innerHTML = pageCount < 2 ? '' : `<div class="pager">${pb(srvPage - 1, '‹ ' + t('Sebelumnya'), srvPage === 0)}
-    <span>${t('Halaman {p} dari {n}', { p: srvPage + 1, n: pageCount })}</span>${pb(srvPage + 1, t('Berikutnya') + ' ›', srvPage >= pageCount - 1)}</div>`;
+  const pb = (p, label, off, on) => `<button type="button" class="small${on ? ' primary' : ''}" data-srvpage="${p}" ${off ? 'disabled' : ''}>${label}</button>`;
+  const nums = [];
+  for (let i = 0; i < pageCount; i++) if (i === 0 || i === pageCount - 1 || Math.abs(i - srvPage) <= 2) nums.push(i);
+  const numBtns = nums.map((i, k) => (k && i - nums[k - 1] > 1 ? '<span>…</span>' : '') + pb(i, String(i + 1), false, i === srvPage)).join('');
+  $('srvPager').innerHTML = pageCount < 2 ? '' : `<div class="pager">${pb(srvPage - 1, '‹ ' + t('Sebelumnya'), srvPage === 0)}${numBtns}${pb(srvPage + 1, t('Berikutnya') + ' ›', srvPage >= pageCount - 1)}</div>`;
   if (target) {   // arriving from a problem on the search page
     render.jumped = true;
     const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));

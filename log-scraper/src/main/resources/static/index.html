@@ -94,7 +94,8 @@
   .filters select, .filters input { font-size: 13px; padding: 6px 8px; }
   .filters input[type=search] { flex: 1 1 180px; font-size: 13px; }
   .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
-  .pager button { padding: 4px 10px; font-size: 13px; }
+  .pager button { padding: 4px 10px; font-size: 13px; min-width: 32px; }
+  .pager button.primary { min-width: 32px; }
   .srvmore { grid-column: 1 / -1; justify-self: start; font-size: 13px; padding: 6px 12px; }
   .quiet { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
   .quiet .stag { margin: 2px 2px 2px 0; }
@@ -438,12 +439,14 @@ function paged(key, rows) {
   const page = Math.min(Math.max(pages[key] || 0, 0), count - 1);
   pages[key] = page;
   const slice = rows.slice(page * perPage, (page + 1) * perPage);
-  const btn = (p, label, off) => `<button type="button" data-key="${esc(key)}" data-page="${p}" ${off ? 'disabled' : ''}>${label}</button>`;
-  const pager = count < 2 ? '' : `<div class="pager">
-      <span class="note">${t('{a}–{b} dari {n} baris', { a: page * perPage + 1, b: page * perPage + slice.length, n: rows.length })}</span>
-      ${btn(0, '«', page === 0)}${btn(page - 1, '‹ ' + t('Sebelumnya'), page === 0)}
-      <span>${t('Halaman {p} dari {n}', { p: page + 1, n: count })}</span>
-      ${btn(page + 1, t('Berikutnya') + ' ›', page >= count - 1)}${btn(count - 1, '»', page >= count - 1)}</div>`;
+  const btn = (p, label, off, on) => `<button type="button" data-key="${esc(key)}" data-page="${p}" ${off ? 'disabled' : ''} ${on ? 'class="primary" aria-current="page"' : ''}>${label}</button>`;
+  // 1 … 4 5 [6] 7 8 … 20: always the first, the last and the neighbours of the current page
+  const nums = [];
+  for (let i = 0; i < count; i++) if (i === 0 || i === count - 1 || Math.abs(i - page) <= 2) nums.push(i);
+  const numBtns = nums.map((i, k) => (k && i - nums[k - 1] > 1 ? '<span>…</span>' : '') + btn(i, String(i + 1), false, i === page)).join('');
+  const info = `<span class="note">${t('{a}–{b} dari {n} baris', { a: rows.length ? page * perPage + 1 : 0, b: page * perPage + slice.length, n: rows.length })}</span>`;
+  const pager = rows.length === 0 ? '' : `<div class="pager">${info}${count < 2 ? '' : `
+      ${btn(page - 1, '‹ ' + t('Sebelumnya'), page === 0)}${numBtns}${btn(page + 1, t('Berikutnya') + ' ›', page >= count - 1)}`}</div>`;
   return { slice, pager };
 }
 
